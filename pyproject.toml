@@ -1,0 +1,23 @@
+[project]
+name = "probabilistic-activation-oracles"
+version = "0.1.0"
+description = "Uncertainty quantification for activation oracles via MCMC power sampling"
+requires-python = ">=3.10"
+dependencies = [
+    "nl-probes",
+    "scipy",
+    "matplotlib",
+]
+
+[tool.uv.sources]
+nl-probes = { path = "activation_oracles", editable = true }
+
+[build-system]
+requires = ["setuptools", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+include = ["pao", "pao.*"]
+
+[tool.uv.extra-build-dependencies]
+flash-attn = [{ requirement = "torch", match-runtime = true }]
