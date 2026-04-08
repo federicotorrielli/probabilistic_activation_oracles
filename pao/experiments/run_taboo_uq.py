@@ -50,6 +50,7 @@ from pao.oracle_sampler import SteeredAutoregressiveSampler
 from pao.methods.logprob_baseline import logprob_confidence, LogProbResult
 from pao.methods.temperature_bootstrap import temperature_bootstrap, BootstrapResult
 from pao.methods.mcmc_oracle import mcmc_oracle_sample, mcmc_agreement, MCMCResult, MCMCAgreementResult
+from pao.methods.steering_sensitivity import steering_sensitivity_confidence, SensitivityResult
 from pao.calibration.metrics import (
     expected_calibration_error,
     negative_log_likelihood,
@@ -199,6 +200,7 @@ def run_all_methods(
     all_predictions: dict[str, list[WordPrediction]] = {
         "logprob": [],
         "bootstrap": [],
+        "sensitivity": [],
         "mcmc": [],
         "mcmc_agreement": [],
     }
@@ -262,6 +264,30 @@ def run_all_methods(
                             "num_unique": boot_result.num_unique,
                             "temperature": boot_result.temperature,
                             "k": boot_result.k,
+                        },
+                    ))
+
+                    # --- Method 6: Steering-coefficient sensitivity ---
+                    sens_result = steering_sensitivity_confidence(
+                        sampler=sampler,
+                        context=oracle_ids,
+                        coefficients=sampling.sensitivity_coefficients,
+                        max_new_tokens=sampling.max_new_tokens,
+                    )
+                    all_predictions["sensitivity"].append(WordPrediction(
+                        target_word=target_word,
+                        context_prompt=ctx_prompt,
+                        verbalizer_prompt=verbalizer_prompt,
+                        predicted_answer=sens_result.mode_answer,
+                        confidence=sens_result.mode_frequency,
+                        is_correct=sens_result.mode_answer == target_word,
+                        method="sensitivity",
+                        method_metadata={
+                            "coefficients": sens_result.coefficients,
+                            "answers": sens_result.answers,
+                            "per_coef_mean_logprob": sens_result.per_coef_mean_logprob,
+                            "entropy": sens_result.entropy,
+                            "num_unique": sens_result.num_unique,
                         },
                     ))
 

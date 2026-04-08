@@ -72,6 +72,11 @@ class SamplingConfig:
     # Power agreement
     power_agreement_k: int = 10
 
+    # Steering sensitivity (Method 6)
+    sensitivity_coefficients: list[float] = field(
+        default_factory=lambda: [0.5, 0.75, 1.0, 1.25, 1.5]
+    )
+
     # Generation defaults
     max_new_tokens: int = 20
 

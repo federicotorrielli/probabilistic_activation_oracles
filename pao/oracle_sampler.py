@@ -75,6 +75,13 @@ class SteeredAutoregressiveSampler:
             self._handle.remove()
             self._handle = None
 
+    def set_steering_coefficient(self, c: float) -> None:
+        """Update steering coefficient and re-register hook if currently attached."""
+        self._steering_coefficient = c
+        if self._handle is not None:
+            self.detach_hook()
+            self.attach_hook()
+
     def __enter__(self):
         self.attach_hook()
         return self

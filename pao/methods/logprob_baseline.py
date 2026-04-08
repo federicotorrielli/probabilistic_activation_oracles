@@ -2,7 +2,7 @@
 
 Extracts per-token log-probabilities from the oracle's steered greedy
 generation as confidence scores. This is the simplest UQ method and
-serves as a strong baseline. The oracle was trained with cross-entropy
+serves as a baseline. The oracle was trained with cross-entropy
 loss, so its log-probs should already reflect epistemic uncertainty about
 the activation it received.
 """
