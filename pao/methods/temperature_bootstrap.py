@@ -60,17 +60,13 @@ def temperature_bootstrap(
     Returns:
         BootstrapResult with empirical distribution statistics.
     """
-    raw_samples = []
-    for _ in range(k):
-        full_seq, _, _ = sampler.generate_with_logprobs(
-            context=context,
-            temperature=temperature,
-            max_new_tokens=max_new_tokens,
-            do_sample=True,
-        )
-        generated_ids = full_seq[len(context):]
-        text = sampler.tokenizer.decode(generated_ids, skip_special_tokens=True)
-        raw_samples.append(text)
+    raw_samples = sampler.generate_batch_texts(
+        context=context,
+        temperature=temperature,
+        max_new_tokens=max_new_tokens,
+        num_samples=k,
+        do_sample=True,
+    )
 
     normalized = [_normalize_answer(s) for s in raw_samples]
     counts = Counter(normalized)

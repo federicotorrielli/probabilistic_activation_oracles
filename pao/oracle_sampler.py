@@ -100,6 +100,70 @@ class SteeredAutoregressiveSampler:
         return F.log_softmax(logits, dim=-1)
 
     @torch.no_grad()
+    def generate_batch_texts(
+        self,
+        context: list[int],
+        temperature: float,
+        max_new_tokens: int,
+        num_samples: int,
+        do_sample: bool = True,
+    ) -> list[str]:
+        """Generate ``num_samples`` completions in a single batched forward.
+
+        Returns the decoded text of each completion (with special tokens
+        stripped). The steering hook is rebuilt for batch size ``num_samples``
+        for the duration of the call and restored afterward.
+        """
+        if num_samples <= 0:
+            return []
+
+        # Rebuild the hook to match the expanded batch.
+        had_hook = self._handle is not None
+        if had_hook:
+            self._handle.remove()
+            self._handle = None
+
+        batched_hook = get_hf_activation_steering_hook(
+            vectors=list(self._steering_vectors) * num_samples,
+            positions=list(self._positions) * num_samples,
+            steering_coefficient=self._steering_coefficient,
+            device=self.device,
+            dtype=self._dtype,
+        )
+        batched_handle = self.submodule.register_forward_hook(batched_hook)
+
+        try:
+            input_ids = torch.tensor(
+                [context], dtype=torch.long, device=self.device
+            ).repeat(num_samples, 1)
+
+            gen_kwargs = {
+                "max_new_tokens": max_new_tokens,
+                "do_sample": do_sample,
+                "eos_token_id": self.tokenizer.eos_token_id,
+                "pad_token_id": self.tokenizer.eos_token_id,
+                "return_dict_in_generate": True,
+            }
+            if do_sample:
+                gen_kwargs["temperature"] = temperature
+
+            output = self.model.generate(input_ids=input_ids, **gen_kwargs)
+        finally:
+            batched_handle.remove()
+            if had_hook:
+                self.attach_hook()
+
+        c = len(context)
+        texts: list[str] = []
+        eos_id = self.tokenizer.eos_token_id
+        for b in range(num_samples):
+            gen_ids = output.sequences[b][c:].tolist()
+            if eos_id is not None and eos_id in gen_ids:
+                gen_ids = gen_ids[: gen_ids.index(eos_id)]
+            texts.append(self.tokenizer.decode(gen_ids, skip_special_tokens=True))
+        return texts
+
+    @torch.no_grad()
     def generate_with_logprobs(
         self,
         context: list[int],

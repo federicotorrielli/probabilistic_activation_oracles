@@ -63,8 +63,14 @@ from pao.calibration.secret_word_calibration import (
 )
 
 
-def setup_model(cfg: ModelConfig) -> tuple[AutoModelForCausalLM, AutoTokenizer, torch.device]:
-    """Load model, tokenizer, and set up LoRA support."""
+def setup_model(
+    cfg: ModelConfig,
+) -> tuple[AutoModelForCausalLM, AutoTokenizer, torch.device, Optional[str]]:
+    """Load model, tokenizer, and eagerly load the verbalizer LoRA.
+
+    The verbalizer adapter is loaded once here and left as the active adapter.
+    Target LoRAs are loaded lazily (and cached) in the outer experiment loop.
+    """
     device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
     tokenizer = load_tokenizer(cfg.model_name)
     model = load_model(cfg.model_name, cfg.dtype)
@@ -74,7 +80,12 @@ def setup_model(cfg: ModelConfig) -> tuple[AutoModelForCausalLM, AutoTokenizer, 
     dummy_config = LoraConfig()
     model.add_adapter(dummy_config, adapter_name="default")
 
-    return model, tokenizer, device
+    verbalizer_adapter: Optional[str] = None
+    if cfg.verbalizer_lora_path:
+        verbalizer_adapter = load_lora_adapter(model, cfg.verbalizer_lora_path)
+        model.set_adapter(verbalizer_adapter)
+
+    return model, tokenizer, device, verbalizer_adapter
 
 
 def prepare_activation_and_sampler(
@@ -82,19 +93,21 @@ def prepare_activation_and_sampler(
     tokenizer: AutoTokenizer,
     device: torch.device,
     cfg: ModelConfig,
-    target_word: str,
+    target_adapter: str,
+    verbalizer_adapter: Optional[str],
     context_prompt: str,
     verbalizer_prompt: str,
 ) -> tuple[SteeredAutoregressiveSampler, list[int]]:
-    """Collect activations from target LoRA and set up a steered sampler.
+    """Collect activations from the already-loaded target LoRA and build a sampler.
+
+    The target adapter must already be loaded (by the caller, once per target_word).
+    This function only switches between target and verbalizer adapters — it never
+    loads or deletes.
 
     Returns:
-        (sampler, oracle_context_ids) where sampler has hook NOT yet attached.
-        Caller must use `with sampler:` or call sampler.attach_hook().
+        (sampler, oracle_context_ids). The sampler's hook is NOT attached yet;
+        the caller must use ``with sampler:`` or call ``sampler.attach_hook()``.
     """
-    target_lora_path = cfg.target_lora_template.format(word=target_word)
-    sanitized_target = load_lora_adapter(model, target_lora_path)
-
     # Encode context prompt for activation collection
     formatted_prompt = [{"role": "user", "content": context_prompt}]
     inputs_BL = encode_messages(
@@ -108,8 +121,7 @@ def prepare_activation_and_sampler(
     # Collect activations from the target LoRA model
     act_layer = int(model.config.num_hidden_layers * (cfg.selected_layer_percent / 100))
 
-    model.enable_adapters()
-    model.set_adapter(sanitized_target)
+    model.set_adapter(target_adapter)
     submodules = {act_layer: get_hf_submodule(model, act_layer)}
     acts_by_layer = collect_activations_multiple_layers(
         model=model,
@@ -118,7 +130,10 @@ def prepare_activation_and_sampler(
         min_offset=None,
         max_offset=None,
     )
-    model.disable_adapters()
+
+    # Switch back to the verbalizer adapter for oracle generation.
+    if verbalizer_adapter is not None:
+        model.set_adapter(verbalizer_adapter)
 
     # Extract activation vectors for steering
     acts_BLD = acts_by_layer[act_layer]  # (1, L, D)
@@ -151,11 +166,6 @@ def prepare_activation_and_sampler(
     # Get injection submodule
     injection_submodule = get_hf_submodule(model, injection_layer)
 
-    # Load verbalizer LoRA
-    if cfg.verbalizer_lora_path:
-        sanitized_verbalizer = load_lora_adapter(model, cfg.verbalizer_lora_path)
-        model.set_adapter(sanitized_verbalizer)
-
     sampler = SteeredAutoregressiveSampler(
         model=model,
         tokenizer=tokenizer,
@@ -166,10 +176,6 @@ def prepare_activation_and_sampler(
         steering_coefficient=1.0,
         dtype=cfg.dtype,
     )
-
-    # Clean up target adapter
-    if sanitized_target in model.peft_config:
-        model.delete_adapter(sanitized_target)
 
     return sampler, oracle_ids
 
@@ -183,7 +189,7 @@ def run_all_methods(
         Dict mapping method_name -> list of WordPrediction.
     """
     set_seed(exp_cfg.seed)
-    model, tokenizer, device = setup_model(exp_cfg.model)
+    model, tokenizer, device, verbalizer_adapter = setup_model(exp_cfg.model)
 
     # Load context prompts
     ctx_file = AO_ROOT / exp_cfg.context_prompt_file
@@ -209,6 +215,10 @@ def run_all_methods(
     pbar = tqdm(total=total, desc="Running UQ methods")
 
     for target_word in target_words:
+        # Load (and cache) the target LoRA exactly once per target word.
+        target_lora_path = exp_cfg.model.target_lora_template.format(word=target_word)
+        target_adapter = load_lora_adapter(model, target_lora_path)
+
         for verbalizer_prompt in verbalizer_prompts:
             for ctx_prompt in context_prompts:
                 sampler, oracle_ids = prepare_activation_and_sampler(
@@ -216,7 +226,8 @@ def run_all_methods(
                     tokenizer=tokenizer,
                     device=device,
                     cfg=exp_cfg.model,
-                    target_word=target_word,
+                    target_adapter=target_adapter,
+                    verbalizer_adapter=verbalizer_adapter,
                     context_prompt=ctx_prompt,
                     verbalizer_prompt=verbalizer_prompt,
                 )
