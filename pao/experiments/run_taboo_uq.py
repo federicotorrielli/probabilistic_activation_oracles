@@ -11,46 +11,29 @@ This script handles the full pipeline:
 3. Compute calibration metrics and save results
 """
 
-import os
-import sys
+import hashlib
 import json
-import random
+import os
+from dataclasses import asdict
+from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
-from dataclasses import asdict
 
 import torch
-from tqdm import tqdm
-from peft import LoraConfig
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
-# Ensure submodule imports work
-from pao.config import (
-    PROJECT_ROOT, AO_ROOT,
-    TABOO_WORDS, VERBALIZER_PROMPTS_TABOO,
-    ModelConfig, SamplingConfig, ExperimentConfig,
+from nl_probes.base_experiment import (
+    encode_messages,
+    load_lora_adapter,
 )
-
-from nl_probes.utils.common import load_model, load_tokenizer, set_seed
 from nl_probes.utils.activation_utils import (
     collect_activations_multiple_layers,
     get_hf_submodule,
 )
-from nl_probes.utils.dataset_utils import create_training_datapoint, SPECIAL_TOKEN
-from nl_probes.base_experiment import (
-    VerbalizerEvalConfig,
-    VerbalizerInputInfo,
-    encode_messages,
-    collect_target_activations,
-    load_lora_adapter,
-    sanitize_lora_name,
-)
+from nl_probes.utils.common import load_model, load_tokenizer, set_seed
+from nl_probes.utils.dataset_utils import SPECIAL_TOKEN
+from peft import LoraConfig
+from tqdm import tqdm
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pao.oracle_sampler import SteeredAutoregressiveSampler
-from pao.methods.logprob_baseline import logprob_confidence, LogProbResult
-from pao.methods.temperature_bootstrap import temperature_bootstrap, BootstrapResult
-from pao.methods.mcmc_oracle import mcmc_oracle_sample, mcmc_agreement, MCMCResult, MCMCAgreementResult
-from pao.methods.steering_sensitivity import steering_sensitivity_confidence, SensitivityResult
 from pao.calibration.metrics import (
     expected_calibration_error,
     negative_log_likelihood,
@@ -58,9 +41,22 @@ from pao.calibration.metrics import (
 )
 from pao.calibration.secret_word_calibration import (
     WordPrediction,
-    CalibrationTestResult,
-    save_calibration_results,
 )
+
+# Ensure submodule imports work
+from pao.config import (
+    AO_ROOT,
+    TABOO_WORDS,
+    VERBALIZER_PROMPTS_TABOO,
+    ExperimentConfig,
+    ModelConfig,
+    SamplingConfig,
+)
+from pao.methods.logprob_baseline import logprob_confidence
+from pao.methods.mcmc_oracle import mcmc_agreement, mcmc_oracle_sample
+from pao.methods.steering_sensitivity import steering_sensitivity_confidence
+from pao.methods.temperature_bootstrap import temperature_bootstrap
+from pao.oracle_sampler import SteeredAutoregressiveSampler
 
 
 def setup_model(
@@ -141,7 +137,11 @@ def prepare_activation_and_sampler(
 
     # Use segment positions (last 10 tokens by default)
     start = max(0, seq_len + cfg.segment_start_idx)
-    end = seq_len + cfg.segment_end_idx if cfg.segment_end_idx <= 0 else cfg.segment_end_idx
+    end = (
+        seq_len + cfg.segment_end_idx
+        if cfg.segment_end_idx <= 0
+        else cfg.segment_end_idx
+    )
     positions_rel = list(range(start, end))
 
     steering_vectors = [acts_BLD[0, positions_rel, :]]  # list of (K, D)
@@ -150,7 +150,9 @@ def prepare_activation_and_sampler(
     # Build the oracle prompt with steering tokens
     injection_layer = cfg.injection_layer
     num_positions = len(positions_rel)
-    introspection_prefix = f"Layer: {act_layer}\n" + SPECIAL_TOKEN * num_positions + " \n"
+    introspection_prefix = (
+        f"Layer: {act_layer}\n" + SPECIAL_TOKEN * num_positions + " \n"
+    )
     oracle_prompt = introspection_prefix + verbalizer_prompt
     oracle_ids = tokenizer.encode(oracle_prompt, add_special_tokens=True)
 
@@ -180,8 +182,111 @@ def prepare_activation_and_sampler(
     return sampler, oracle_ids
 
 
+def config_hash(exp_cfg: ExperimentConfig) -> str:
+    """Return a deterministic hash of config fields that affect iteration identity.
+
+    Excludes output_dir, device, and dtype since they don't change which results
+    are produced, only where/how they're stored/computed.
+    """
+    sampling = exp_cfg.sampling
+    key = {
+        "model_name": exp_cfg.model.model_name,
+        "verbalizer_lora_path": exp_cfg.model.verbalizer_lora_path,
+        "target_lora_template": exp_cfg.model.target_lora_template,
+        "injection_layer": exp_cfg.model.injection_layer,
+        "selected_layer_percent": exp_cfg.model.selected_layer_percent,
+        "segment_start_idx": exp_cfg.model.segment_start_idx,
+        "segment_end_idx": exp_cfg.model.segment_end_idx,
+        "context_prompt_file": exp_cfg.context_prompt_file,
+        "max_context_prompts": exp_cfg.max_context_prompts,
+        "seed": exp_cfg.seed,
+        "bootstrap_k": sampling.bootstrap_k,
+        "bootstrap_temperatures": sampling.bootstrap_temperatures,
+        "mcmc_temperatures": sampling.mcmc_temperatures,
+        "mcmc_steps": sampling.mcmc_steps,
+        "mcmc_block_num": sampling.mcmc_block_num,
+        "mcmc_max_new_tokens": sampling.mcmc_max_new_tokens,
+        "power_agreement_k": sampling.power_agreement_k,
+        "sensitivity_coefficients": sampling.sensitivity_coefficients,
+        "max_new_tokens": sampling.max_new_tokens,
+    }
+    serialized = json.dumps(key, sort_keys=True)
+    return hashlib.sha256(serialized.encode()).hexdigest()[:16]
+
+
+def save_checkpoint(
+    path: Path,
+    predictions: dict[str, list[WordPrediction]],
+    exp_cfg: ExperimentConfig,
+    total_completed: int,
+    total_expected: int,
+) -> None:
+    """Atomically write checkpoint to disk."""
+    path.parent.mkdir(parents=True, exist_ok=True)
+    checkpoint = {
+        "metadata": {
+            "timestamp": datetime.now(timezone.utc).isoformat(),
+            "total_completed": total_completed,
+            "total_expected": total_expected,
+            "config_hash": config_hash(exp_cfg),
+        },
+        "predictions": {
+            method: [asdict(p) for p in preds] for method, preds in predictions.items()
+        },
+    }
+    tmp_path = path.with_suffix(".tmp.json")
+    with open(tmp_path, "w") as f:
+        json.dump(checkpoint, f)
+    os.replace(tmp_path, path)
+
+
+def load_checkpoint(
+    path: Path,
+    exp_cfg: ExperimentConfig,
+) -> tuple[dict[str, list[WordPrediction]], set[tuple[str, str, str]]]:
+    """Load checkpoint, validate config compatibility, return predictions and completed keys."""
+    try:
+        with open(path) as f:
+            checkpoint = json.load(f)
+    except (json.JSONDecodeError, OSError):
+        tmp_path = path.with_suffix(".tmp.json")
+        print(f"Warning: checkpoint.json unreadable, trying {tmp_path.name}")
+        with open(tmp_path) as f:
+            checkpoint = json.load(f)
+
+    saved_hash = checkpoint["metadata"]["config_hash"]
+    current_hash = config_hash(exp_cfg)
+    if saved_hash != current_hash:
+        raise ValueError(
+            f"Checkpoint config mismatch (saved: {saved_hash}, current: {current_hash}). "
+            "Use --no-resume to start fresh."
+        )
+
+    method_names = ["logprob", "bootstrap", "sensitivity", "mcmc", "mcmc_agreement"]
+    raw = checkpoint["predictions"]
+    lengths = [len(raw.get(m, [])) for m in method_names]
+    min_len = min(lengths)
+    if len(set(lengths)) > 1:
+        print(
+            f"Warning: method list length mismatch {dict(zip(method_names, lengths))}; truncating to {min_len}"
+        )
+
+    predictions: dict[str, list[WordPrediction]] = {
+        m: [WordPrediction(**d) for d in raw.get(m, [])[:min_len]] for m in method_names
+    }
+
+    # Build completed keys from any one method (all are written atomically together)
+    completed_keys: set[tuple[str, str, str]] = {
+        (p.target_word, p.verbalizer_prompt, p.context_prompt)
+        for p in predictions["logprob"]
+    }
+    return predictions, completed_keys
+
+
 def run_all_methods(
     exp_cfg: ExperimentConfig,
+    checkpoint_every: int = 50,
+    no_resume: bool = False,
 ) -> dict[str, list[WordPrediction]]:
     """Run all UQ methods on the taboo task.
 
@@ -197,7 +302,7 @@ def run_all_methods(
         context_prompts = [line.strip() for line in f if line.strip()]
 
     if exp_cfg.max_context_prompts is not None:
-        context_prompts = context_prompts[:exp_cfg.max_context_prompts]
+        context_prompts = context_prompts[: exp_cfg.max_context_prompts]
 
     verbalizer_prompts = VERBALIZER_PROMPTS_TABOO
     target_words = TABOO_WORDS
@@ -212,7 +317,17 @@ def run_all_methods(
     }
 
     total = len(target_words) * len(verbalizer_prompts) * len(context_prompts)
-    pbar = tqdm(total=total, desc="Running UQ methods")
+    checkpoint_path = Path(exp_cfg.output_dir) / "checkpoint.json"
+    completed_keys: set[tuple[str, str, str]] = set()
+
+    if not no_resume and checkpoint_path.exists():
+        all_predictions, completed_keys = load_checkpoint(checkpoint_path, exp_cfg)
+        print(
+            f"Resumed from checkpoint: {len(completed_keys)}/{total} iterations already completed"
+        )
+
+    pbar = tqdm(total=total, initial=len(completed_keys), desc="Running UQ methods")
+    iterations_since_save = 0
 
     for target_word in target_words:
         # Load (and cache) the target LoRA exactly once per target word.
@@ -221,6 +336,10 @@ def run_all_methods(
 
         for verbalizer_prompt in verbalizer_prompts:
             for ctx_prompt in context_prompts:
+                if (target_word, verbalizer_prompt, ctx_prompt) in completed_keys:
+                    pbar.update(1)
+                    continue
+
                 sampler, oracle_ids = prepare_activation_and_sampler(
                     model=model,
                     tokenizer=tokenizer,
@@ -239,20 +358,25 @@ def run_all_methods(
                         context=oracle_ids,
                         max_new_tokens=sampling.max_new_tokens,
                     )
-                    all_predictions["logprob"].append(WordPrediction(
-                        target_word=target_word,
-                        context_prompt=ctx_prompt,
-                        verbalizer_prompt=verbalizer_prompt,
-                        predicted_answer=lp_result.generated_text,
-                        confidence=lp_result.normalized_prob,
-                        is_correct=lp_result.generated_text.strip().lower().rstrip(".!?,;:") == target_word,
-                        method="logprob",
-                        method_metadata={
-                            "mean_log_prob": lp_result.mean_log_prob,
-                            "min_log_prob": lp_result.min_log_prob,
-                            "first_token_entropy": lp_result.first_token_entropy,
-                        },
-                    ))
+                    all_predictions["logprob"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=lp_result.generated_text,
+                            confidence=lp_result.normalized_prob,
+                            is_correct=lp_result.generated_text.strip()
+                            .lower()
+                            .rstrip(".!?,;:")
+                            == target_word,
+                            method="logprob",
+                            method_metadata={
+                                "mean_log_prob": lp_result.mean_log_prob,
+                                "min_log_prob": lp_result.min_log_prob,
+                                "first_token_entropy": lp_result.first_token_entropy,
+                            },
+                        )
+                    )
 
                     # --- Method 2: Temperature bootstrap ---
                     boot_result = temperature_bootstrap(
@@ -262,21 +386,23 @@ def run_all_methods(
                         temperature=sampling.bootstrap_temperatures[0],
                         max_new_tokens=sampling.max_new_tokens,
                     )
-                    all_predictions["bootstrap"].append(WordPrediction(
-                        target_word=target_word,
-                        context_prompt=ctx_prompt,
-                        verbalizer_prompt=verbalizer_prompt,
-                        predicted_answer=boot_result.mode_answer,
-                        confidence=boot_result.mode_frequency,
-                        is_correct=boot_result.mode_answer == target_word,
-                        method="bootstrap",
-                        method_metadata={
-                            "entropy": boot_result.entropy,
-                            "num_unique": boot_result.num_unique,
-                            "temperature": boot_result.temperature,
-                            "k": boot_result.k,
-                        },
-                    ))
+                    all_predictions["bootstrap"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=boot_result.mode_answer,
+                            confidence=boot_result.mode_frequency,
+                            is_correct=boot_result.mode_answer == target_word,
+                            method="bootstrap",
+                            method_metadata={
+                                "entropy": boot_result.entropy,
+                                "num_unique": boot_result.num_unique,
+                                "temperature": boot_result.temperature,
+                                "k": boot_result.k,
+                            },
+                        )
+                    )
 
                     # --- Method 6: Steering-coefficient sensitivity ---
                     sens_result = steering_sensitivity_confidence(
@@ -285,22 +411,24 @@ def run_all_methods(
                         coefficients=sampling.sensitivity_coefficients,
                         max_new_tokens=sampling.max_new_tokens,
                     )
-                    all_predictions["sensitivity"].append(WordPrediction(
-                        target_word=target_word,
-                        context_prompt=ctx_prompt,
-                        verbalizer_prompt=verbalizer_prompt,
-                        predicted_answer=sens_result.mode_answer,
-                        confidence=sens_result.mode_frequency,
-                        is_correct=sens_result.mode_answer == target_word,
-                        method="sensitivity",
-                        method_metadata={
-                            "coefficients": sens_result.coefficients,
-                            "answers": sens_result.answers,
-                            "per_coef_mean_logprob": sens_result.per_coef_mean_logprob,
-                            "entropy": sens_result.entropy,
-                            "num_unique": sens_result.num_unique,
-                        },
-                    ))
+                    all_predictions["sensitivity"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=sens_result.mode_answer,
+                            confidence=sens_result.mode_frequency,
+                            is_correct=sens_result.mode_answer == target_word,
+                            method="sensitivity",
+                            method_metadata={
+                                "coefficients": sens_result.coefficients,
+                                "answers": sens_result.answers,
+                                "per_coef_mean_logprob": sens_result.per_coef_mean_logprob,
+                                "entropy": sens_result.entropy,
+                                "num_unique": sens_result.num_unique,
+                            },
+                        )
+                    )
 
                     # --- Method 3: Single MCMC sample (with acceptance ratio as signal) ---
                     mcmc_result = mcmc_oracle_sample(
@@ -311,21 +439,26 @@ def run_all_methods(
                         max_new_tokens=sampling.mcmc_max_new_tokens,
                         block_num=sampling.mcmc_block_num,
                     )
-                    mcmc_answer = mcmc_result.generated_text.strip().lower().rstrip(".!?,;:")
-                    all_predictions["mcmc"].append(WordPrediction(
-                        target_word=target_word,
-                        context_prompt=ctx_prompt,
-                        verbalizer_prompt=verbalizer_prompt,
-                        predicted_answer=mcmc_result.generated_text,
-                        confidence=1.0 - mcmc_result.acceptance_ratio,  # low acceptance = high confidence
-                        is_correct=mcmc_answer == target_word,
-                        method="mcmc",
-                        method_metadata={
-                            "acceptance_ratio": mcmc_result.acceptance_ratio,
-                            "alpha": mcmc_result.alpha,
-                            "temperature": mcmc_result.temperature,
-                        },
-                    ))
+                    mcmc_answer = (
+                        mcmc_result.generated_text.strip().lower().rstrip(".!?,;:")
+                    )
+                    all_predictions["mcmc"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=mcmc_result.generated_text,
+                            confidence=1.0
+                            - mcmc_result.acceptance_ratio,  # low acceptance = high confidence
+                            is_correct=mcmc_answer == target_word,
+                            method="mcmc",
+                            method_metadata={
+                                "acceptance_ratio": mcmc_result.acceptance_ratio,
+                                "alpha": mcmc_result.alpha,
+                                "temperature": mcmc_result.temperature,
+                            },
+                        )
+                    )
 
                     # --- Method 4: MCMC agreement ---
                     agree_result = mcmc_agreement(
@@ -337,25 +470,39 @@ def run_all_methods(
                         max_new_tokens=sampling.mcmc_max_new_tokens,
                         block_num=sampling.mcmc_block_num,
                     )
-                    all_predictions["mcmc_agreement"].append(WordPrediction(
-                        target_word=target_word,
-                        context_prompt=ctx_prompt,
-                        verbalizer_prompt=verbalizer_prompt,
-                        predicted_answer=agree_result.mode_answer,
-                        confidence=agree_result.mode_frequency,
-                        is_correct=agree_result.mode_answer == target_word,
-                        method="mcmc_agreement",
-                        method_metadata={
-                            "entropy": agree_result.entropy,
-                            "num_unique": agree_result.num_unique,
-                            "mean_acceptance_ratio": agree_result.mean_acceptance_ratio,
-                            "k": agree_result.k,
-                            "alpha": agree_result.alpha,
-                        },
-                    ))
+                    all_predictions["mcmc_agreement"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=agree_result.mode_answer,
+                            confidence=agree_result.mode_frequency,
+                            is_correct=agree_result.mode_answer == target_word,
+                            method="mcmc_agreement",
+                            method_metadata={
+                                "entropy": agree_result.entropy,
+                                "num_unique": agree_result.num_unique,
+                                "mean_acceptance_ratio": agree_result.mean_acceptance_ratio,
+                                "k": agree_result.k,
+                                "alpha": agree_result.alpha,
+                            },
+                        )
+                    )
 
                 pbar.update(1)
+                iterations_since_save += 1
+                if iterations_since_save >= checkpoint_every:
+                    save_checkpoint(
+                        checkpoint_path, all_predictions, exp_cfg, pbar.n, total
+                    )
+                    iterations_since_save = 0
 
+            # Save at the natural boundary (all context prompts for one word+verbalizer done)
+            save_checkpoint(checkpoint_path, all_predictions, exp_cfg, pbar.n, total)
+            iterations_since_save = 0
+
+    # Final save to capture any last iterations not yet flushed
+    save_checkpoint(checkpoint_path, all_predictions, exp_cfg, pbar.n, total)
     pbar.close()
     return all_predictions
 
@@ -432,13 +579,28 @@ if __name__ == "__main__":
 
     parser = argparse.ArgumentParser(description="Run taboo UQ experiments")
     parser.add_argument("--model", default="Qwen/Qwen3-8B", help="Base model name")
-    parser.add_argument("--max-prompts", type=int, default=None, help="Limit context prompts")
-    parser.add_argument("--output-dir", default="results/taboo_uq", help="Output directory")
+    parser.add_argument(
+        "--max-prompts", type=int, default=None, help="Limit context prompts"
+    )
+    parser.add_argument(
+        "--output-dir", default="results/taboo_uq", help="Output directory"
+    )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bootstrap-k", type=int, default=20)
     parser.add_argument("--mcmc-steps", type=int, default=5)
     parser.add_argument("--mcmc-temp", type=float, default=0.25)
     parser.add_argument("--agreement-k", type=int, default=10)
+    parser.add_argument(
+        "--checkpoint-every",
+        type=int,
+        default=50,
+        help="Save checkpoint every N completed iterations (default: 50)",
+    )
+    parser.add_argument(
+        "--no-resume",
+        action="store_true",
+        help="Ignore any existing checkpoint and start fresh",
+    )
     args = parser.parse_args()
 
     os.chdir(AO_ROOT)  # So dataset paths resolve correctly
@@ -456,5 +618,7 @@ if __name__ == "__main__":
         seed=args.seed,
     )
 
-    predictions = run_all_methods(cfg)
+    predictions = run_all_methods(
+        cfg, checkpoint_every=args.checkpoint_every, no_resume=args.no_resume
+    )
     evaluate_and_save(predictions, cfg.output_dir)
