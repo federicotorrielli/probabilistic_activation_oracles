@@ -29,12 +29,19 @@ from nl_probes.utils.activation_utils import (
     get_hf_submodule,
 )
 from nl_probes.utils.common import load_model, load_tokenizer, set_seed
-from nl_probes.utils.dataset_utils import SPECIAL_TOKEN
+from nl_probes.utils.dataset_utils import (
+    SPECIAL_TOKEN,
+    find_pattern_in_tokens,
+    get_introspection_prefix,
+)
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
+from pao.answer_extraction import extract_predicted_word
 from pao.calibration.metrics import (
+    auroc,
+    confidence_separation,
     expected_calibration_error,
     negative_log_likelihood,
     print_calibration_summary,
@@ -57,6 +64,12 @@ from pao.methods.mcmc_oracle import mcmc_agreement, mcmc_oracle_sample
 from pao.methods.steering_sensitivity import steering_sensitivity_confidence
 from pao.methods.temperature_bootstrap import temperature_bootstrap
 from pao.oracle_sampler import SteeredAutoregressiveSampler
+
+# Bump when any on-disk-incompatible change is made to the experiment logic
+# (prompt format, answer extraction, confidence definitions, ...). The value
+# is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
+# silently appending incompatible predictions.
+CODE_VERSION = "2"
 
 
 def setup_model(
@@ -145,25 +158,31 @@ def prepare_activation_and_sampler(
     positions_rel = list(range(start, end))
 
     steering_vectors = [acts_BLD[0, positions_rel, :]]  # list of (K, D)
-    steering_positions = [positions_rel]  # list of list[int]
 
-    # Build the oracle prompt with steering tokens
+    # Build the oracle prompt using the exact chat-template format the oracle
+    # LoRA was trained with (see nl_probes.dataset_utils.create_training_datapoint):
+    #   user message = get_introspection_prefix(layer, K) + verbalizer_prompt
+    #   apply_chat_template(add_generation_prompt=True, enable_thinking=False)
     injection_layer = cfg.injection_layer
     num_positions = len(positions_rel)
-    introspection_prefix = (
-        f"Layer: {act_layer}\n" + SPECIAL_TOKEN * num_positions + " \n"
+    oracle_user_content = (
+        get_introspection_prefix(act_layer, num_positions) + verbalizer_prompt
     )
-    oracle_prompt = introspection_prefix + verbalizer_prompt
-    oracle_ids = tokenizer.encode(oracle_prompt, add_special_tokens=True)
+    oracle_ids = tokenizer.apply_chat_template(
+        [{"role": "user", "content": oracle_user_content}],
+        tokenize=True,
+        add_generation_prompt=True,
+        enable_thinking=False,
+    )
+    if not isinstance(oracle_ids, list):
+        raise TypeError("Expected list of token ids from apply_chat_template")
 
-    # Adjust steering positions to match where SPECIAL_TOKEN appears in oracle_ids
-    # The steering positions in the oracle prompt correspond to the " ?" tokens
-    special_token_id = tokenizer.encode(SPECIAL_TOKEN, add_special_tokens=False)
-    if len(special_token_id) == 1:
-        special_id = special_token_id[0]
-        special_positions = [i for i, tid in enumerate(oracle_ids) if tid == special_id]
-        if len(special_positions) >= num_positions:
-            steering_positions = [special_positions[:num_positions]]
+    # Steering positions land on the SPECIAL_TOKEN (" ?") occurrences inside
+    # the rendered user message. find_pattern_in_tokens asserts they are a
+    # consecutive run followed by a newline, matching the training layout.
+    steering_positions = [
+        find_pattern_in_tokens(oracle_ids, SPECIAL_TOKEN, num_positions, tokenizer)
+    ]
 
     # Get injection submodule
     injection_submodule = get_hf_submodule(model, injection_layer)
@@ -190,6 +209,7 @@ def config_hash(exp_cfg: ExperimentConfig) -> str:
     """
     sampling = exp_cfg.sampling
     key = {
+        "code_version": CODE_VERSION,
         "model_name": exp_cfg.model.model_name,
         "verbalizer_lora_path": exp_cfg.model.verbalizer_lora_path,
         "target_lora_template": exp_cfg.model.target_lora_template,
@@ -353,10 +373,17 @@ def run_all_methods(
 
                 with sampler:
                     # --- Method 1: Log-prob baseline ---
+                    # Confidence = max first-token probability. The chat template
+                    # puts the assistant's first content token right after the
+                    # generation prompt, so this directly measures how peaked
+                    # the oracle is on one candidate word.
                     lp_result = logprob_confidence(
                         sampler=sampler,
                         context=oracle_ids,
                         max_new_tokens=sampling.max_new_tokens,
+                    )
+                    lp_word = extract_predicted_word(
+                        lp_result.generated_text, TABOO_WORDS
                     )
                     all_predictions["logprob"].append(
                         WordPrediction(
@@ -364,16 +391,16 @@ def run_all_methods(
                             context_prompt=ctx_prompt,
                             verbalizer_prompt=verbalizer_prompt,
                             predicted_answer=lp_result.generated_text,
-                            confidence=lp_result.normalized_prob,
-                            is_correct=lp_result.generated_text.strip()
-                            .lower()
-                            .rstrip(".!?,;:")
-                            == target_word,
+                            confidence=lp_result.first_token_max_prob,
+                            is_correct=lp_word == target_word,
                             method="logprob",
                             method_metadata={
+                                "extracted_word": lp_word,
+                                "first_token_entropy": lp_result.first_token_entropy,
+                                "first_token_max_prob": lp_result.first_token_max_prob,
                                 "mean_log_prob": lp_result.mean_log_prob,
                                 "min_log_prob": lp_result.min_log_prob,
-                                "first_token_entropy": lp_result.first_token_entropy,
+                                "geometric_mean_prob": lp_result.geometric_mean_prob,
                             },
                         )
                     )
@@ -382,6 +409,7 @@ def run_all_methods(
                     boot_result = temperature_bootstrap(
                         sampler=sampler,
                         context=oracle_ids,
+                        answer_vocab=TABOO_WORDS,
                         k=sampling.bootstrap_k,
                         temperature=sampling.bootstrap_temperatures[0],
                         max_new_tokens=sampling.max_new_tokens,
@@ -396,6 +424,8 @@ def run_all_methods(
                             is_correct=boot_result.mode_answer == target_word,
                             method="bootstrap",
                             method_metadata={
+                                "raw_samples": boot_result.samples,
+                                "normalized_samples": boot_result.normalized_samples,
                                 "entropy": boot_result.entropy,
                                 "num_unique": boot_result.num_unique,
                                 "temperature": boot_result.temperature,
@@ -409,6 +439,7 @@ def run_all_methods(
                         sampler=sampler,
                         context=oracle_ids,
                         coefficients=sampling.sensitivity_coefficients,
+                        answer_vocab=TABOO_WORDS,
                         max_new_tokens=sampling.max_new_tokens,
                     )
                     all_predictions["sensitivity"].append(
@@ -423,6 +454,7 @@ def run_all_methods(
                             method_metadata={
                                 "coefficients": sens_result.coefficients,
                                 "answers": sens_result.answers,
+                                "normalized_answers": sens_result.normalized_answers,
                                 "per_coef_mean_logprob": sens_result.per_coef_mean_logprob,
                                 "entropy": sens_result.entropy,
                                 "num_unique": sens_result.num_unique,
@@ -439,8 +471,8 @@ def run_all_methods(
                         max_new_tokens=sampling.mcmc_max_new_tokens,
                         block_num=sampling.mcmc_block_num,
                     )
-                    mcmc_answer = (
-                        mcmc_result.generated_text.strip().lower().rstrip(".!?,;:")
+                    mcmc_word = extract_predicted_word(
+                        mcmc_result.generated_text, TABOO_WORDS
                     )
                     all_predictions["mcmc"].append(
                         WordPrediction(
@@ -450,9 +482,10 @@ def run_all_methods(
                             predicted_answer=mcmc_result.generated_text,
                             confidence=1.0
                             - mcmc_result.acceptance_ratio,  # low acceptance = high confidence
-                            is_correct=mcmc_answer == target_word,
+                            is_correct=mcmc_word == target_word,
                             method="mcmc",
                             method_metadata={
+                                "extracted_word": mcmc_word,
                                 "acceptance_ratio": mcmc_result.acceptance_ratio,
                                 "alpha": mcmc_result.alpha,
                                 "temperature": mcmc_result.temperature,
@@ -464,6 +497,7 @@ def run_all_methods(
                     agree_result = mcmc_agreement(
                         sampler=sampler,
                         context=oracle_ids,
+                        answer_vocab=TABOO_WORDS,
                         k=sampling.power_agreement_k,
                         temperature=sampling.mcmc_temperatures[0],
                         mcmc_steps=sampling.mcmc_steps,
@@ -480,6 +514,7 @@ def run_all_methods(
                             is_correct=agree_result.mode_answer == target_word,
                             method="mcmc_agreement",
                             method_metadata={
+                                "normalized_samples": agree_result.normalized_samples,
                                 "entropy": agree_result.entropy,
                                 "num_unique": agree_result.num_unique,
                                 "mean_acceptance_ratio": agree_result.mean_acceptance_ratio,
@@ -524,16 +559,24 @@ def evaluate_and_save(
         cal = expected_calibration_error(confidences, correctness)
         nll = negative_log_likelihood(confidences, correctness)
         accuracy = sum(correctness) / max(len(correctness), 1)
+        auroc_score = auroc(confidences, correctness)
+        conf_correct, conf_wrong = confidence_separation(confidences, correctness)
 
         print_calibration_summary(cal, method_name)
-        print(f"  Accuracy: {accuracy:.3f}")
-        print(f"  NLL: {nll:.4f}")
+        print(f"  Accuracy:           {accuracy:.3f}")
+        print(f"  NLL:                {nll:.4f}")
+        print(f"  AUROC:              {auroc_score:.3f}")
+        print(f"  Conf|correct:       {conf_correct:.3f}")
+        print(f"  Conf|wrong:         {conf_wrong:.3f}")
 
         summary[method_name] = {
             "accuracy": accuracy,
             "ece": cal.ece,
             "brier_score": cal.brier_score,
             "nll": nll,
+            "auroc": auroc_score,
+            "conf_given_correct": conf_correct,
+            "conf_given_wrong": conf_wrong,
             "n_samples": len(predictions),
         }
 
@@ -549,6 +592,9 @@ def evaluate_and_save(
                 "bin_counts": cal.bin_counts,
             },
             "nll": nll,
+            "auroc": auroc_score,
+            "conf_given_correct": conf_correct,
+            "conf_given_wrong": conf_wrong,
             "predictions": [asdict(p) for p in predictions],
         }
 
@@ -559,17 +605,22 @@ def evaluate_and_save(
     with open(output_path / "comparison_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
 
-    print(f"\n{'=' * 60}")
+    print(f"\n{'=' * 78}")
     print("  Method Comparison Summary")
-    print(f"{'=' * 60}")
-    print(f"  {'Method':<20} {'Accuracy':>10} {'ECE':>10} {'Brier':>10} {'NLL':>10}")
-    print(f"{'─' * 60}")
+    print(f"{'=' * 78}")
+    print(
+        f"  {'Method':<18} {'Acc':>8} {'ECE':>8} {'Brier':>8} "
+        f"{'NLL':>8} {'AUROC':>8} {'C|ok':>7} {'C|err':>7}"
+    )
+    print(f"{'─' * 78}")
     for method, stats in summary.items():
         print(
-            f"  {method:<20} {stats['accuracy']:>10.3f} {stats['ece']:>10.4f} "
-            f"{stats['brier_score']:>10.4f} {stats['nll']:>10.4f}"
+            f"  {method:<18} {stats['accuracy']:>8.3f} {stats['ece']:>8.4f} "
+            f"{stats['brier_score']:>8.4f} {stats['nll']:>8.4f} "
+            f"{stats['auroc']:>8.3f} "
+            f"{stats['conf_given_correct']:>7.3f} {stats['conf_given_wrong']:>7.3f}"
         )
-    print(f"{'=' * 60}")
+    print(f"{'=' * 78}")
 
     return summary
 

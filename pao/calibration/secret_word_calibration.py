@@ -16,26 +16,27 @@ calibration at different difficulty levels.
 import json
 import random
 from collections import defaultdict
-from dataclasses import dataclass, field, asdict
+from dataclasses import asdict, dataclass, field
 from pathlib import Path
-from typing import Optional, Callable
+from typing import Callable, Optional
 
 import torch
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pao.config import TABOO_WORDS, VERBALIZER_PROMPTS_TABOO, ModelConfig
 from pao.calibration.metrics import (
     CalibrationResult,
     expected_calibration_error,
     negative_log_likelihood,
     print_calibration_summary,
 )
+from pao.config import TABOO_WORDS, VERBALIZER_PROMPTS_TABOO, ModelConfig
 
 
 @dataclass
 class WordPrediction:
     """A single prediction for one (target_word, context_prompt) pair."""
+
     target_word: str
     context_prompt: str
     verbalizer_prompt: str
@@ -49,6 +50,7 @@ class WordPrediction:
 @dataclass
 class CalibrationTestResult:
     """Results from the full calibration protocol for one method."""
+
     method: str
     predictions: list[WordPrediction]
     calibration: CalibrationResult
@@ -103,7 +105,11 @@ def run_calibration_test(
 
     predictions: list[WordPrediction] = []
 
-    total = len(target_words) * len(verbalizer_prompts) * (len(context_prompts) if context_prompts else 1)
+    total = (
+        len(target_words)
+        * len(verbalizer_prompts)
+        * (len(context_prompts) if context_prompts else 1)
+    )
     pbar = tqdm(total=total, desc=f"Calibration [{method_name}]")
 
     for target_word in target_words:
@@ -123,18 +129,22 @@ def run_calibration_test(
                     model_config=model_config,
                 )
 
-                is_correct = predicted.strip().lower().rstrip(".!?,;:") == target_word.lower()
+                is_correct = (
+                    predicted.strip().lower().rstrip(".!?,;:") == target_word.lower()
+                )
 
-                predictions.append(WordPrediction(
-                    target_word=target_word,
-                    context_prompt=ctx_prompt,
-                    verbalizer_prompt=verbalizer_prompt,
-                    predicted_answer=predicted,
-                    confidence=confidence,
-                    is_correct=is_correct,
-                    method=method_name,
-                    method_metadata=metadata,
-                ))
+                predictions.append(
+                    WordPrediction(
+                        target_word=target_word,
+                        context_prompt=ctx_prompt,
+                        verbalizer_prompt=verbalizer_prompt,
+                        predicted_answer=predicted,
+                        confidence=confidence,
+                        is_correct=is_correct,
+                        method=method_name,
+                        method_metadata=metadata,
+                    )
+                )
                 pbar.update(1)
 
     pbar.close()
@@ -152,8 +162,7 @@ def run_calibration_test(
         word_correct[p.target_word].append(p.is_correct)
 
     per_word_accuracy = {
-        word: sum(results) / len(results)
-        for word, results in word_correct.items()
+        word: sum(results) / len(results) for word, results in word_correct.items()
     }
     overall_accuracy = sum(correctness) / max(len(correctness), 1)
 

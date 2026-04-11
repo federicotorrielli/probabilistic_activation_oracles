@@ -5,7 +5,7 @@ diagram computation for comparing UQ methods.
 """
 
 import math
-from dataclasses import dataclass, field
+from dataclasses import dataclass
 
 import numpy as np
 
@@ -13,6 +13,7 @@ import numpy as np
 @dataclass
 class CalibrationResult:
     """Result from calibration analysis."""
+
     ece: float  # Expected Calibration Error
     brier_score: float
     bin_confidences: list[float]  # average confidence per bin
@@ -41,9 +42,13 @@ def expected_calibration_error(
     n = len(confidences)
     if n == 0:
         return CalibrationResult(
-            ece=0.0, brier_score=0.0,
-            bin_confidences=[], bin_accuracies=[], bin_counts=[],
-            num_bins=num_bins, n_samples=0,
+            ece=0.0,
+            brier_score=0.0,
+            bin_confidences=[],
+            bin_accuracies=[],
+            bin_counts=[],
+            num_bins=num_bins,
+            n_samples=0,
         )
 
     conf = np.array(confidences, dtype=np.float64)
@@ -129,9 +134,58 @@ def agreement_accuracy_correlation(
     return float(rho) if not math.isnan(rho) else 0.0
 
 
+def auroc(confidences: list[float], correctness: list[bool]) -> float:
+    """Discriminative AUROC: probability a correct prediction outranks a wrong one.
+
+    This is the key complement to ECE: ECE says "confidence matches accuracy on
+    average", AUROC says "confidence separates correct from incorrect". A method
+    can have great ECE by outputting a constant near the marginal accuracy, so
+    we report both.
+
+    Returns 0.5 if all labels are the same (undefined case).
+    """
+    pos = [c for c, r in zip(confidences, correctness) if r]
+    neg = [c for c, r in zip(confidences, correctness) if not r]
+    if not pos or not neg:
+        return 0.5
+
+    # Mann-Whitney U via rank-sum over the combined list (handles ties).
+    combined = [(c, 1) for c in pos] + [(c, 0) for c in neg]
+    combined.sort(key=lambda x: x[0])
+
+    ranks: list[float] = [0.0] * len(combined)
+    i = 0
+    while i < len(combined):
+        j = i
+        while j + 1 < len(combined) and combined[j + 1][0] == combined[i][0]:
+            j += 1
+        avg_rank = (i + j) / 2.0 + 1.0  # 1-based average rank for ties
+        for k in range(i, j + 1):
+            ranks[k] = avg_rank
+        i = j + 1
+
+    rank_sum_pos = sum(r for r, (_, lbl) in zip(ranks, combined) if lbl == 1)
+    n_pos, n_neg = len(pos), len(neg)
+    u = rank_sum_pos - n_pos * (n_pos + 1) / 2.0
+    return float(u / (n_pos * n_neg))
+
+
+def confidence_separation(
+    confidences: list[float], correctness: list[bool]
+) -> tuple[float, float]:
+    """Return (mean conf on correct, mean conf on incorrect)."""
+    pos = [c for c, r in zip(confidences, correctness) if r]
+    neg = [c for c, r in zip(confidences, correctness) if not r]
+    mean_pos = sum(pos) / len(pos) if pos else 0.0
+    mean_neg = sum(neg) / len(neg) if neg else 0.0
+    return float(mean_pos), float(mean_neg)
+
+
 def print_calibration_summary(result: CalibrationResult, method_name: str = ""):
     """Print a human-readable calibration summary."""
-    header = f"Calibration Summary: {method_name}" if method_name else "Calibration Summary"
+    header = (
+        f"Calibration Summary: {method_name}" if method_name else "Calibration Summary"
+    )
     print(f"\n{'=' * 60}")
     print(f"  {header}")
     print(f"{'=' * 60}")
@@ -146,7 +200,7 @@ def print_calibration_summary(result: CalibrationResult, method_name: str = ""):
         if count > 0:
             gap = abs(result.bin_accuracies[i] - result.bin_confidences[i])
             print(
-                f"  {i+1:>5} {count:>6} {result.bin_confidences[i]:>10.3f} "
+                f"  {i + 1:>5} {count:>6} {result.bin_confidences[i]:>10.3f} "
                 f"{result.bin_accuracies[i]:>10.3f} {gap:>10.3f}"
             )
     print(f"{'=' * 60}\n")

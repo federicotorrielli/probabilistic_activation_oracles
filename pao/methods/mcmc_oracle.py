@@ -7,19 +7,22 @@ than temperature sampling.
 """
 
 from collections import Counter
-from dataclasses import dataclass, field
+from dataclasses import dataclass
+from typing import Sequence
 
+from pao.answer_extraction import extract_predicted_word
+from pao.methods.temperature_bootstrap import _empirical_entropy
 from pao.oracle_sampler import (
     SteeredAutoregressiveSampler,
-    mcmc_power_samp_steered,
     max_swap_steered,
+    mcmc_power_samp_steered,
 )
-from pao.methods.temperature_bootstrap import _normalize_answer, _empirical_entropy
 
 
 @dataclass
 class MCMCResult:
     """Result from a single MCMC power sampling run."""
+
     generated_text: str
     token_ids: list[int]
     log_probs_norm: list[float]
@@ -34,9 +37,11 @@ class MCMCResult:
 @dataclass
 class MCMCAgreementResult:
     """Result from k independent MCMC samples measuring agreement."""
+
     samples: list[MCMCResult]
+    normalized_samples: list[str]  # extracted words, one per chain
     answer_counts: dict[str, int]
-    mode_answer: str
+    mode_answer: str  # extracted-word mode
     mode_frequency: float
     entropy: float
     num_unique: int
@@ -79,7 +84,7 @@ def mcmc_oracle_sample(
         block_num=block_num,
     )
 
-    generated_ids = gen[len(context):]
+    generated_ids = gen[len(context) :]
     text = sampler.tokenizer.decode(generated_ids, skip_special_tokens=True)
 
     return MCMCResult(
@@ -98,6 +103,7 @@ def mcmc_oracle_sample(
 def mcmc_agreement(
     sampler: SteeredAutoregressiveSampler,
     context: list[int],
+    answer_vocab: Sequence[str],
     k: int = 10,
     temperature: float = 0.25,
     mcmc_steps: int = 5,
@@ -136,7 +142,9 @@ def mcmc_agreement(
         )
         results.append(result)
 
-    normalized = [_normalize_answer(r.generated_text) for r in results]
+    normalized = [
+        extract_predicted_word(r.generated_text, answer_vocab) for r in results
+    ]
     counts = Counter(normalized)
     mode_answer, mode_count = counts.most_common(1)[0]
 
@@ -145,6 +153,7 @@ def mcmc_agreement(
 
     return MCMCAgreementResult(
         samples=results,
+        normalized_samples=normalized,
         answer_counts=dict(counts),
         mode_answer=mode_answer,
         mode_frequency=mode_count / k,

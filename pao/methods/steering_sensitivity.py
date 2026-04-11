@@ -17,31 +17,31 @@ cannot accidentally leave the sampler in a non-default state.
 import math
 from collections import Counter
 from dataclasses import dataclass
+from typing import Sequence
 
+from pao.answer_extraction import extract_predicted_word
 from pao.oracle_sampler import SteeredAutoregressiveSampler
 
 
 @dataclass
 class SensitivityResult:
     """Result from the steering-sensitivity method."""
+
     coefficients: list[float]
-    answers: list[str]            # raw greedy answers, one per coefficient
-    normalized_answers: list[str]
+    answers: list[str]  # raw greedy answers, one per coefficient
+    normalized_answers: list[str]  # extracted words, one per coefficient
     per_coef_mean_logprob: list[float]
-    mode_answer: str
-    mode_frequency: float         # confidence score: fraction agreeing with mode
-    entropy: float                # Shannon entropy of the per-sweep answer distribution
+    mode_answer: str  # extracted-word mode
+    mode_frequency: float  # confidence score: fraction agreeing with mode
+    entropy: float  # Shannon entropy of the per-sweep answer distribution
     num_unique: int
-
-
-def _normalize_answer(text: str) -> str:
-    return text.strip().lower().rstrip(".!?,;:")
 
 
 def steering_sensitivity_confidence(
     sampler: SteeredAutoregressiveSampler,
     context: list[int],
     coefficients: list[float],
+    answer_vocab: Sequence[str],
     max_new_tokens: int = 20,
 ) -> SensitivityResult:
     """Sweep steering coefficients and measure oracle answer stability.
@@ -70,7 +70,7 @@ def steering_sensitivity_confidence(
                 context=context,
                 max_new_tokens=max_new_tokens,
             )
-            generated_ids = full_seq[len(context):]
+            generated_ids = full_seq[len(context) :]
             text = sampler.tokenizer.decode(generated_ids, skip_special_tokens=True)
             raw_answers.append(text)
 
@@ -79,7 +79,7 @@ def steering_sensitivity_confidence(
     finally:
         sampler.set_steering_coefficient(original_coef)
 
-    normalized = [_normalize_answer(a) for a in raw_answers]
+    normalized = [extract_predicted_word(a, answer_vocab) for a in raw_answers]
     counts = Counter(normalized)
     total = len(normalized)
     mode_answer, mode_count = counts.most_common(1)[0]

@@ -18,6 +18,7 @@ from pao.oracle_sampler import SteeredAutoregressiveSampler
 @dataclass
 class ElicitationResult:
     """Result from direct confidence elicitation."""
+
     answer_text: str
     confidence_text: str
     parsed_confidence: float  # 0-1 scale
@@ -30,19 +31,19 @@ def parse_confidence_number(text: str) -> Optional[float]:
     text = text.strip()
 
     # Try percentage pattern: "85%" or "85 percent"
-    match = re.search(r'(\d+(?:\.\d+)?)\s*%', text)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*%", text)
     if match:
         return float(match.group(1))
 
     # Try fraction pattern: "85/100"
-    match = re.search(r'(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)', text)
+    match = re.search(r"(\d+(?:\.\d+)?)\s*/\s*(\d+(?:\.\d+)?)", text)
     if match:
         num, denom = float(match.group(1)), float(match.group(2))
         if denom > 0:
             return (num / denom) * 100
 
     # Try bare number
-    match = re.search(r'(\d+(?:\.\d+)?)', text)
+    match = re.search(r"(\d+(?:\.\d+)?)", text)
     if match:
         return float(match.group(1))
 
@@ -79,13 +80,15 @@ def direct_elicitation(
         do_sample=False,
     )
 
-    answer_ids = full_seq[len(context):]
+    answer_ids = full_seq[len(context) :]
     answer_text = sampler.tokenizer.decode(answer_ids, skip_special_tokens=True)
 
     # Turn 2: Append the answer and confidence prompt, generate again
     # Build: [original_context] + [answer] + [confidence_prompt]
     confidence_suffix = f" {answer_text}\n{confidence_prompt}"
-    confidence_ids = sampler.tokenizer.encode(confidence_suffix, add_special_tokens=False)
+    confidence_ids = sampler.tokenizer.encode(
+        confidence_suffix, add_special_tokens=False
+    )
     turn2_context = full_seq + confidence_ids
 
     turn2_seq, _, _ = sampler.generate_with_logprobs(
@@ -95,8 +98,10 @@ def direct_elicitation(
         do_sample=False,
     )
 
-    confidence_response_ids = turn2_seq[len(turn2_context):]
-    confidence_text = sampler.tokenizer.decode(confidence_response_ids, skip_special_tokens=True)
+    confidence_response_ids = turn2_seq[len(turn2_context) :]
+    confidence_text = sampler.tokenizer.decode(
+        confidence_response_ids, skip_special_tokens=True
+    )
 
     # Parse confidence
     raw_value = parse_confidence_number(confidence_text)

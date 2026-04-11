@@ -12,10 +12,8 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-from tqdm import tqdm
-from transformers import AutoModelForCausalLM, AutoTokenizer
-
 from nl_probes.utils.steering_hooks import get_hf_activation_steering_hook
+from transformers import AutoModelForCausalLM, AutoTokenizer
 
 
 class SteeredAutoregressiveSampler:
@@ -94,7 +92,7 @@ class SteeredAutoregressiveSampler:
         """Get log-probabilities for the next token given a prefix."""
         torch_prefix = torch.tensor([prefix], dtype=torch.long, device=self.device)
         if torch_prefix.size(1) > self.block_size:
-            torch_prefix = torch_prefix[:, -self.block_size:]
+            torch_prefix = torch_prefix[:, -self.block_size :]
         output = self.model(torch_prefix)
         logits = output.logits[0, -1, :]
         return F.log_softmax(logits, dim=-1)
@@ -200,19 +198,23 @@ class SteeredAutoregressiveSampler:
             return context, [], []
 
         unscaled_logits = torch.stack(output.logits, dim=0)  # (T, 1, V)
-        scaled_logits = torch.stack(output.scores, dim=0)    # (T, 1, V)
+        scaled_logits = torch.stack(output.scores, dim=0)  # (T, 1, V)
 
         idx = tokens.view(num_generated, 1, 1)
 
         # Unscaled log-probs (from the model's actual distribution)
-        log_probs_unscaled = torch.gather(
-            F.log_softmax(unscaled_logits, dim=-1), -1, idx
-        ).view(-1).tolist()
+        log_probs_unscaled = (
+            torch.gather(F.log_softmax(unscaled_logits, dim=-1), -1, idx)
+            .view(-1)
+            .tolist()
+        )
 
         # Scaled log-probs (after temperature, used as proposal distribution)
-        log_probs_scaled = torch.gather(
-            F.log_softmax(scaled_logits, dim=-1), -1, idx
-        ).view(-1).tolist()
+        log_probs_scaled = (
+            torch.gather(F.log_softmax(scaled_logits, dim=-1), -1, idx)
+            .view(-1)
+            .tolist()
+        )
 
         full_seq = output.sequences[0].tolist()
         return full_seq, log_probs_scaled, log_probs_unscaled
@@ -246,9 +248,11 @@ class SteeredAutoregressiveSampler:
         unscaled_logits = torch.stack(output.logits, dim=0)
         idx = tokens.view(num_generated, 1, 1)
 
-        log_probs = torch.gather(
-            F.log_softmax(unscaled_logits, dim=-1), -1, idx
-        ).view(-1).tolist()
+        log_probs = (
+            torch.gather(F.log_softmax(unscaled_logits, dim=-1), -1, idx)
+            .view(-1)
+            .tolist()
+        )
 
         full_seq = output.sequences[0].tolist()
         return full_seq, log_probs
@@ -342,7 +346,9 @@ def mcmc_power_samp_steered(
                 - sum(log_prob_prop)
             )
 
-            if np.random.rand() < np.exp(min(log_r, 0)):  # clamp for numerical stability
+            if np.random.rand() < np.exp(
+                min(log_r, 0)
+            ):  # clamp for numerical stability
                 acceptances += 1
                 gen = prop.copy()
                 log_probs_norm[idx - c :] = log_prob_prop.copy()

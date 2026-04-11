@@ -3,7 +3,7 @@
 import sys
 from dataclasses import dataclass, field
 from pathlib import Path
-from typing import Any, Optional
+from typing import Optional
 
 import torch
 
@@ -19,9 +19,26 @@ sys.path.insert(0, str(RWS_ROOT / "llm_experiments"))
 # --- Taboo task constants ---
 
 TABOO_WORDS = [
-    "ship", "wave", "song", "snow", "rock", "moon", "jump", "green",
-    "flame", "flag", "dance", "cloud", "clock", "chair", "salt", "book",
-    "blue", "gold", "leaf", "smile",
+    "ship",
+    "wave",
+    "song",
+    "snow",
+    "rock",
+    "moon",
+    "jump",
+    "green",
+    "flame",
+    "flag",
+    "dance",
+    "cloud",
+    "clock",
+    "chair",
+    "salt",
+    "book",
+    "blue",
+    "gold",
+    "leaf",
+    "smile",
 ]
 
 VERBALIZER_PROMPTS_TABOO = [
@@ -34,12 +51,15 @@ VERBALIZER_PROMPTS_TABOO = [
 @dataclass
 class ModelConfig:
     """Which models and LoRAs to use."""
+
     model_name: str = "Qwen/Qwen3-8B"
     dtype: torch.dtype = torch.bfloat16
     device: str = "cuda"
 
     # Oracle (verbalizer) LoRA
-    verbalizer_lora_path: str = "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B"
+    verbalizer_lora_path: str = (
+        "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B"
+    )
 
     # Template for target LoRAs (taboo task)
     target_lora_template: str = "adamkarvonen/Qwen3-8B-taboo-{word}_50_mix"
@@ -61,7 +81,9 @@ class SamplingConfig:
 
     # Temperature bootstrap
     bootstrap_k: int = 20
-    bootstrap_temperatures: list[float] = field(default_factory=lambda: [0.3, 0.5, 0.7, 1.0])
+    bootstrap_temperatures: list[float] = field(
+        default_factory=lambda: [0.3, 0.5, 0.7, 1.0]
+    )
 
     # MCMC power sampling
     mcmc_temperatures: list[float] = field(default_factory=lambda: [0.5, 0.25, 0.125])
@@ -84,6 +106,7 @@ class SamplingConfig:
 @dataclass
 class ExperimentConfig:
     """Top-level experiment configuration."""
+
     model: ModelConfig = field(default_factory=ModelConfig)
     sampling: SamplingConfig = field(default_factory=SamplingConfig)
 

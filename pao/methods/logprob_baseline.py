@@ -1,10 +1,12 @@
 """Log-probability baseline for uncertainty quantification.
 
-Extracts per-token log-probabilities from the oracle's steered greedy
-generation as confidence scores. This is the simplest UQ method and
-serves as a baseline. The oracle was trained with cross-entropy
-loss, so its log-probs should already reflect epistemic uncertainty about
-the activation it received.
+Runs greedy decoding on the steered oracle and reports per-token log-probs
+alongside the distribution over the *first* generated token. The first-token
+distribution is the natural confidence signal for this task: under the chat
+template the first assistant content token is the secret word itself, so
+``max p(first_token)`` directly measures how concentrated the oracle is on
+one candidate word. Mean-log-prob over a 20-token sentence dilutes that
+signal with filler tokens, so we keep it as diagnostic metadata only.
 """
 
 import math
@@ -26,19 +28,21 @@ class LogProbResult:
     min_log_prob: float
     sequence_log_prob: float
     first_token_entropy: float
-    normalized_prob: float  # exp(mean_log_prob), i.e. geometric mean token probability
+    first_token_max_prob: float  # primary confidence signal
+    geometric_mean_prob: float  # exp(mean_log_prob), diagnostic only
 
 
-def compute_first_token_entropy(
+def compute_first_token_stats(
     sampler: SteeredAutoregressiveSampler,
     context: list[int],
-) -> float:
-    """Compute entropy of the first generated token's distribution."""
+) -> tuple[float, float]:
+    """Return (entropy, max_prob) of the first generated token distribution."""
     log_probs = sampler.next_token(context)
     probs = torch.exp(log_probs)
-    # Entropy: -sum(p * log(p)), only over nonzero probabilities
-    entropy = -torch.sum(probs * log_probs).item()
-    return entropy
+    # Entropy of a discrete distribution via sum p*log p.
+    entropy = float(-torch.sum(probs * log_probs).item())
+    max_prob = float(probs.max().item())
+    return entropy, max_prob
 
 
 def logprob_confidence(
@@ -46,20 +50,11 @@ def logprob_confidence(
     context: list[int],
     max_new_tokens: int = 20,
 ) -> LogProbResult:
-    """Run greedy generation and extract log-prob confidence scores.
+    """Run greedy generation and extract log-prob confidence scores."""
+    first_token_entropy, first_token_max_prob = compute_first_token_stats(
+        sampler, context
+    )
 
-    Args:
-        sampler: A SteeredAutoregressiveSampler with hook already attached.
-        context: Tokenized oracle prompt (including steering token positions).
-        max_new_tokens: Maximum tokens to generate.
-
-    Returns:
-        LogProbResult with confidence metrics.
-    """
-    # Get first-token entropy before generation
-    first_token_entropy = compute_first_token_entropy(sampler, context)
-
-    # Greedy generation with log-probs
     full_seq, log_probs = sampler.greedy_generate(
         context=context,
         max_new_tokens=max_new_tokens,
@@ -77,7 +72,8 @@ def logprob_confidence(
             min_log_prob=float("-inf"),
             sequence_log_prob=float("-inf"),
             first_token_entropy=first_token_entropy,
-            normalized_prob=0.0,
+            first_token_max_prob=first_token_max_prob,
+            geometric_mean_prob=0.0,
         )
 
     mean_lp = sum(log_probs) / len(log_probs)
@@ -92,5 +88,6 @@ def logprob_confidence(
         min_log_prob=min_lp,
         sequence_log_prob=seq_lp,
         first_token_entropy=first_token_entropy,
-        normalized_prob=math.exp(mean_lp),
+        first_token_max_prob=first_token_max_prob,
+        geometric_mean_prob=math.exp(mean_lp),
     )

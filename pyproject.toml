@@ -7,7 +7,10 @@ dependencies = [
     "nl-probes",
     "scipy",
     "matplotlib",
-    "torch==2.7.1",
+    "torch==2.11.0",
+    "accelerate==1.13.0",
+    "transformers==5.5.3",
+    "einops==0.8.2",
 ]
 
 [[tool.uv.index]]
