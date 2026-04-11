@@ -24,19 +24,6 @@ from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pao.hf_utils import (
-    SPECIAL_TOKEN,
-    collect_activations_multiple_layers,
-    encode_messages,
-    find_pattern_in_tokens,
-    get_hf_submodule,
-    get_introspection_prefix,
-    load_lora_adapter,
-    load_model,
-    load_tokenizer,
-    set_seed,
-)
-
 from pao.answer_extraction import extract_predicted_word
 from pao.calibration.metrics import (
     auroc,
@@ -48,7 +35,6 @@ from pao.calibration.metrics import (
 from pao.calibration.secret_word_calibration import (
     WordPrediction,
 )
-
 from pao.config import (
     AO_ROOT,
     TABOO_WORDS,
@@ -56,6 +42,18 @@ from pao.config import (
     ExperimentConfig,
     ModelConfig,
     SamplingConfig,
+)
+from pao.hf_utils import (
+    SPECIAL_TOKEN,
+    collect_activations_multiple_layers,
+    encode_messages,
+    find_pattern_in_tokens,
+    get_hf_submodule,
+    get_introspection_prefix,
+    load_lora_adapter,
+    load_model,
+    load_tokenizer,
+    set_seed,
 )
 from pao.methods.logprob_baseline import logprob_confidence
 from pao.methods.mcmc_oracle import mcmc_agreement, mcmc_oracle_sample
@@ -301,26 +299,43 @@ def load_checkpoint(
     return predictions, completed_keys
 
 
-def run_all_methods(
-    exp_cfg: ExperimentConfig,
-    checkpoint_every: int = 50,
-    no_resume: bool = False,
-) -> dict[str, list[WordPrediction]]:
-    """Run all UQ methods on the taboo task.
+ExperimentState = tuple[
+    AutoModelForCausalLM, AutoTokenizer, torch.device, Optional[str], list[str]
+]
 
-    Returns:
-        Dict mapping method_name -> list of WordPrediction.
-    """
+
+def setup_experiment_state(exp_cfg: ExperimentConfig) -> ExperimentState:
+    """Load model, tokenizer, and context prompts. Everything except the loop."""
     set_seed(exp_cfg.seed)
     model, tokenizer, device, verbalizer_adapter = setup_model(exp_cfg.model)
 
-    # Load context prompts
     ctx_file = AO_ROOT / exp_cfg.context_prompt_file
     with open(ctx_file) as f:
         context_prompts = [line.strip() for line in f if line.strip()]
 
     if exp_cfg.max_context_prompts is not None:
         context_prompts = context_prompts[: exp_cfg.max_context_prompts]
+
+    return model, tokenizer, device, verbalizer_adapter, context_prompts
+
+
+def run_all_methods(
+    exp_cfg: ExperimentConfig,
+    checkpoint_every: int = 50,
+    no_resume: bool = False,
+    max_iterations: Optional[int] = None,
+    preloaded_state: Optional[ExperimentState] = None,
+) -> dict[str, list[WordPrediction]]:
+    """Run all UQ methods on the taboo task.
+
+    If ``preloaded_state`` is given, skips model loading and reuses it.
+    If ``max_iterations`` is set, stops after processing that many *new*
+    iterations (i.e. iterations not already in the checkpoint) and saves.
+    Returns a dict mapping method_name -> list of WordPrediction.
+    """
+    if preloaded_state is None:
+        preloaded_state = setup_experiment_state(exp_cfg)
+    model, tokenizer, device, verbalizer_adapter, context_prompts = preloaded_state
 
     verbalizer_prompts = VERBALIZER_PROMPTS_TABOO
     target_words = TABOO_WORDS
@@ -346,13 +361,19 @@ def run_all_methods(
 
     pbar = tqdm(total=total, initial=len(completed_keys), desc="Running UQ methods")
     iterations_since_save = 0
+    processed_this_call = 0
+    hit_cap = False
 
     for target_word in target_words:
+        if hit_cap:
+            break
         # Load (and cache) the target LoRA exactly once per target word.
         target_lora_path = exp_cfg.model.target_lora_template.format(word=target_word)
         target_adapter = load_lora_adapter(model, target_lora_path)
 
         for verbalizer_prompt in verbalizer_prompts:
+            if hit_cap:
+                break
             for ctx_prompt in context_prompts:
                 if (target_word, verbalizer_prompt, ctx_prompt) in completed_keys:
                     pbar.update(1)
@@ -524,12 +545,19 @@ def run_all_methods(
 
                 pbar.update(1)
                 iterations_since_save += 1
+                processed_this_call += 1
                 if iterations_since_save >= checkpoint_every:
                     save_checkpoint(
                         checkpoint_path, all_predictions, exp_cfg, pbar.n, total
                     )
                     iterations_since_save = 0
 
+                if max_iterations is not None and processed_this_call >= max_iterations:
+                    hit_cap = True
+                    break
+
+            if hit_cap:
+                break
             # Save at the natural boundary (all context prompts for one word+verbalizer done)
             save_checkpoint(checkpoint_path, all_predictions, exp_cfg, pbar.n, total)
             iterations_since_save = 0
@@ -538,6 +566,50 @@ def run_all_methods(
     save_checkpoint(checkpoint_path, all_predictions, exp_cfg, pbar.n, total)
     pbar.close()
     return all_predictions
+
+
+def print_smoke_report(
+    predictions: dict[str, list[WordPrediction]],
+    cfg: ExperimentConfig,
+) -> None:
+    """Pretty-print the smoke-test results so the user can sanity-check them."""
+    method_names = ["logprob", "bootstrap", "sensitivity", "mcmc", "mcmc_agreement"]
+    n = min(len(predictions[m]) for m in method_names)
+    if n == 0:
+        print("  (no iterations processed — already fully resumed?)")
+        return
+
+    total = (
+        len(TABOO_WORDS)
+        * len(VERBALIZER_PROMPTS_TABOO)
+        * (cfg.max_context_prompts or 99999)
+    )
+    print(f"\n{'=' * 78}")
+    print(f"  Smoke test — {n} iteration(s) completed (of {total} total)")
+    print(f"{'=' * 78}")
+
+    for i in range(n):
+        target = predictions["logprob"][i].target_word
+        ctx = predictions["logprob"][i].context_prompt
+        verb = predictions["logprob"][i].verbalizer_prompt
+        print(f"\n  [{i + 1}] target={target!r}")
+        print(f"      context:    {ctx[:70]}{'...' if len(ctx) > 70 else ''}")
+        print(f"      verbalizer: {verb[:70]}{'...' if len(verb) > 70 else ''}")
+        for m in method_names:
+            p = predictions[m][i]
+            ok = "✓" if p.is_correct else "✗"
+            extracted = p.method_metadata.get(
+                "extracted_word",
+                p.method_metadata.get("normalized_samples", [p.predicted_answer])[0]
+                if isinstance(p.method_metadata.get("normalized_samples"), list)
+                else p.predicted_answer,
+            )
+            raw = p.predicted_answer.replace("\n", " ")[:40]
+            print(
+                f"      {m:<16} {ok}  extracted={extracted!r:<12} "
+                f"conf={p.confidence:.3f}  raw={raw!r}"
+            )
+    print(f"\n{'=' * 78}")
 
 
 def evaluate_and_save(
@@ -650,6 +722,17 @@ if __name__ == "__main__":
         action="store_true",
         help="Ignore any existing checkpoint and start fresh",
     )
+    parser.add_argument(
+        "--skip-smoke",
+        action="store_true",
+        help="Skip the smoke-test phase and go straight to the full run",
+    )
+    parser.add_argument(
+        "--smoke-iterations",
+        type=int,
+        default=1,
+        help="Number of iterations to run in the smoke-test phase (default: 1)",
+    )
     args = parser.parse_args()
 
     os.chdir(AO_ROOT)  # So dataset paths resolve correctly
@@ -667,7 +750,40 @@ if __name__ == "__main__":
         seed=args.seed,
     )
 
+    import sys
+
+    # Load model + prompts once; reused for smoke and full run.
+    state = setup_experiment_state(cfg)
+
+    checkpoint_path = Path(cfg.output_dir) / "checkpoint.json"
+    resuming = not args.no_resume and checkpoint_path.exists()
+
+    if not args.skip_smoke and not resuming:
+        print(
+            f"\n>>> Smoke test: running {args.smoke_iterations} iteration(s) "
+            "to validate the pipeline before the full sweep"
+        )
+        smoke_predictions = run_all_methods(
+            cfg,
+            checkpoint_every=args.checkpoint_every,
+            no_resume=args.no_resume,
+            max_iterations=args.smoke_iterations,
+            preloaded_state=state,
+        )
+        print_smoke_report(smoke_predictions, cfg)
+        try:
+            resp = input("\nProceed with the full run? [y/N]: ").strip().lower()
+        except EOFError:
+            resp = ""
+        if resp not in ("y", "yes"):
+            print("Aborted. The smoke-test iterations are preserved in the checkpoint")
+            print(f"at {checkpoint_path} — rerun to resume from there.")
+            sys.exit(0)
+
     predictions = run_all_methods(
-        cfg, checkpoint_every=args.checkpoint_every, no_resume=args.no_resume
+        cfg,
+        checkpoint_every=args.checkpoint_every,
+        no_resume=args.no_resume,
+        preloaded_state=state,
     )
     evaluate_and_save(predictions, cfg.output_dir)
