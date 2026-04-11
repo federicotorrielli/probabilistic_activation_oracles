@@ -7,12 +7,11 @@ from typing import Optional
 
 import torch
 
-# Add submodule paths so we can import from them
+# AO_ROOT is used purely as a dataset path (datasets/taboo/...).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AO_ROOT = PROJECT_ROOT / "activation_oracles"
 RWS_ROOT = PROJECT_ROOT / "reasoning-with-sampling"
 
-sys.path.insert(0, str(AO_ROOT))
 sys.path.insert(0, str(RWS_ROOT / "llm_experiments"))
 
 

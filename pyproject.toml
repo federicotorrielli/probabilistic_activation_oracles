@@ -4,9 +4,11 @@ version = "0.1.0"
 description = "Uncertainty quantification for activation oracles via MCMC power sampling"
 requires-python = ">=3.10"
 dependencies = [
-    "nl-probes",
     "scipy",
     "matplotlib",
+    "numpy",
+    "tqdm",
+    "peft",
     "torch==2.11.0",
     "accelerate==1.13.0",
     "transformers==5.5.3",
@@ -19,7 +21,6 @@ url = "https://download.pytorch.org/whl/cu128"
 explicit = true
 
 [tool.uv.sources]
-nl-probes = { path = "activation_oracles", editable = true }
 torch = [{ index = "pytorch-cu128" }]
 torchvision = [{ index = "pytorch-cu128" }]
 torchaudio = [{ index = "pytorch-cu128" }]

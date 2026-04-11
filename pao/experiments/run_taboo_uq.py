@@ -20,23 +20,22 @@ from pathlib import Path
 from typing import Optional
 
 import torch
-from nl_probes.base_experiment import (
-    encode_messages,
-    load_lora_adapter,
-)
-from nl_probes.utils.activation_utils import (
-    collect_activations_multiple_layers,
-    get_hf_submodule,
-)
-from nl_probes.utils.common import load_model, load_tokenizer, set_seed
-from nl_probes.utils.dataset_utils import (
-    SPECIAL_TOKEN,
-    find_pattern_in_tokens,
-    get_introspection_prefix,
-)
 from peft import LoraConfig
 from tqdm import tqdm
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from pao.hf_utils import (
+    SPECIAL_TOKEN,
+    collect_activations_multiple_layers,
+    encode_messages,
+    find_pattern_in_tokens,
+    get_hf_submodule,
+    get_introspection_prefix,
+    load_lora_adapter,
+    load_model,
+    load_tokenizer,
+    set_seed,
+)
 
 from pao.answer_extraction import extract_predicted_word
 from pao.calibration.metrics import (
@@ -50,7 +49,6 @@ from pao.calibration.secret_word_calibration import (
     WordPrediction,
 )
 
-# Ensure submodule imports work
 from pao.config import (
     AO_ROOT,
     TABOO_WORDS,
@@ -160,7 +158,7 @@ def prepare_activation_and_sampler(
     steering_vectors = [acts_BLD[0, positions_rel, :]]  # list of (K, D)
 
     # Build the oracle prompt using the exact chat-template format the oracle
-    # LoRA was trained with (see nl_probes.dataset_utils.create_training_datapoint):
+    # LoRA was trained with:
     #   user message = get_introspection_prefix(layer, K) + verbalizer_prompt
     #   apply_chat_template(add_generation_prompt=True, enable_thinking=False)
     injection_layer = cfg.injection_layer

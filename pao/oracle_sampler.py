@@ -12,8 +12,9 @@ from typing import Optional
 import numpy as np
 import torch
 import torch.nn.functional as F
-from nl_probes.utils.steering_hooks import get_hf_activation_steering_hook
 from transformers import AutoModelForCausalLM, AutoTokenizer
+
+from pao.hf_utils import get_hf_activation_steering_hook
 
 
 class SteeredAutoregressiveSampler:
