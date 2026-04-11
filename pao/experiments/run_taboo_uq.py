@@ -164,14 +164,23 @@ def prepare_activation_and_sampler(
     oracle_user_content = (
         get_introspection_prefix(act_layer, num_positions) + verbalizer_prompt
     )
+    # transformers >=5 defaults apply_chat_template to return a BatchEncoding;
+    # pass return_dict=False so we get a flat list of token ids here.
     oracle_ids = tokenizer.apply_chat_template(
         [{"role": "user", "content": oracle_user_content}],
         tokenize=True,
         add_generation_prompt=True,
+        return_tensors=None,
+        return_dict=False,
+        padding=False,
         enable_thinking=False,
     )
-    if not isinstance(oracle_ids, list):
-        raise TypeError("Expected list of token ids from apply_chat_template")
+    if not isinstance(oracle_ids, list) or (
+        oracle_ids and not isinstance(oracle_ids[0], int)
+    ):
+        raise TypeError(
+            f"Expected list of token ids from apply_chat_template, got {type(oracle_ids).__name__}"
+        )
 
     # Steering positions land on the SPECIAL_TOKEN (" ?") occurrences inside
     # the rendered user message. find_pattern_in_tokens asserts they are a
