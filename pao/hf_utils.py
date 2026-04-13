@@ -28,12 +28,17 @@ def get_introspection_prefix(sae_layer: int, num_positions: int) -> str:
 
 
 def find_pattern_in_tokens(
-    token_ids: list[int], special_token_str: str, num_positions: int, tokenizer: AutoTokenizer
+    token_ids: list[int],
+    special_token_str: str,
+    num_positions: int,
+    tokenizer: AutoTokenizer,
 ) -> list[int]:
     start_idx = 0
     end_idx = len(token_ids)
     special_token_id = tokenizer.encode(special_token_str, add_special_tokens=False)
-    assert len(special_token_id) == 1, f"Expected single token, got {len(special_token_id)}"
+    assert len(special_token_id) == 1, (
+        f"Expected single token, got {len(special_token_id)}"
+    )
     special_token_id = special_token_id[0]
     positions = []
 
@@ -43,8 +48,12 @@ def find_pattern_in_tokens(
         if token_ids[i] == special_token_id:
             positions.append(i)
 
-    assert len(positions) == num_positions, f"Expected {num_positions} positions, got {len(positions)}"
-    assert positions[-1] - positions[0] == num_positions - 1, f"Positions are not consecutive: {positions}"
+    assert len(positions) == num_positions, (
+        f"Expected {num_positions} positions, got {len(positions)}"
+    )
+    assert positions[-1] - positions[0] == num_positions - 1, (
+        f"Positions are not consecutive: {positions}"
+    )
 
     final_pos = positions[-1] + 1
     final_tokens = token_ids[final_pos : final_pos + 2]
@@ -125,7 +134,9 @@ def encode_messages(
             enable_thinking=enable_thinking,
         )
         messages.append(rendered)
-    inputs_BL = tokenizer(messages, return_tensors="pt", add_special_tokens=False, padding=True).to(device)
+    inputs_BL = tokenizer(
+        messages, return_tensors="pt", add_special_tokens=False, padding=True
+    ).to(device)
     return inputs_BL
 
 
@@ -167,12 +178,16 @@ def collect_activations_multiple_layers(
     max_offset: int | None,
 ) -> dict[int, torch.Tensor]:
     if min_offset is not None:
-        assert max_offset is not None, "max_offset must be provided if min_offset is provided"
+        assert max_offset is not None, (
+            "max_offset must be provided if min_offset is provided"
+        )
         assert max_offset < min_offset, "max_offset must be less than min_offset"
         assert min_offset < 0, "min_offset must be less than 0"
         assert max_offset < 0, "max_offset must be less than 0"
     else:
-        assert max_offset is None, "max_offset must be provided if min_offset is not provided"
+        assert max_offset is None, (
+            "max_offset must be provided if min_offset is not provided"
+        )
 
     activations_BLD_by_layer = {}
 
@@ -189,7 +204,9 @@ def collect_activations_multiple_layers(
             activations_BLD_by_layer[layer] = outputs
 
         if min_offset is not None:
-            activations_BLD_by_layer[layer] = activations_BLD_by_layer[layer][:, max_offset:min_offset, :]
+            activations_BLD_by_layer[layer] = activations_BLD_by_layer[layer][
+                :, max_offset:min_offset, :
+            ]
 
         if layer == max_layer:
             raise EarlyStopException("Early stopping after capturing activations")
@@ -224,7 +241,12 @@ def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = F
             raise ValueError("Need to determine how to get submodule for LoRA")
         elif "gemma-3" in model_name:
             return model.base_model.language_model.layers[layer]
-        elif "gemma-2" in model_name or "mistral" in model_name or "Llama" in model_name or "Qwen" in model_name:
+        elif (
+            "gemma-2" in model_name
+            or "mistral" in model_name
+            or "Llama" in model_name
+            or "Qwen" in model_name
+        ):
             return model.base_model.model.model.layers[layer]
         else:
             raise ValueError(f"Please add submodule for model {model_name}")
@@ -233,7 +255,12 @@ def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = F
         return model.gpt_neox.layers[layer]
     elif "gemma-3" in model_name:
         return model.language_model.layers[layer]
-    elif "gemma-2" in model_name or "mistral" in model_name or "Llama" in model_name or "Qwen" in model_name:
+    elif (
+        "gemma-2" in model_name
+        or "mistral" in model_name
+        or "Llama" in model_name
+        or "Qwen" in model_name
+    ):
         return model.model.layers[layer]
     else:
         raise ValueError(f"Please add submodule for model {model_name}")
@@ -289,13 +316,17 @@ def get_hf_activation_steering_hook(
     """
 
     # ---- move inputs to device and prepare ragged tensors ----
-    assert len(vectors) == len(positions), "vectors and positions must have same batch length"
+    assert len(vectors) == len(positions), (
+        "vectors and positions must have same batch length"
+    )
     B = len(vectors)
     if B == 0:
         raise ValueError("Empty batch")
 
     # Pre-normalize once; we never backprop through these
-    normed_list = [torch.nn.functional.normalize(v_b, dim=-1).detach() for v_b in vectors]
+    normed_list = [
+        torch.nn.functional.normalize(v_b, dim=-1).detach() for v_b in vectors
+    ]
 
     def hook_fn(module, _input, output):
         # Normalize output API across model families
@@ -308,7 +339,9 @@ def get_hf_activation_steering_hook(
 
         B_actual, L, d_model_actual = resid_BLD.shape
         if B_actual != B:
-            raise ValueError(f"Batch mismatch: module B={B_actual}, provided vectors B={B}")
+            raise ValueError(
+                f"Batch mismatch: module B={B_actual}, provided vectors B={B}"
+            )
 
         # Only touch the prompt forward pass
         if L <= 1:
@@ -326,10 +359,14 @@ def get_hf_activation_steering_hook(
 
             if b == 0:
                 if norms_K1.max() > 300:
-                    print(f"\n\n\n\n\nWARNING: Large norm detected in batch! {norms_K1}\n\n\n\n\n")
+                    print(
+                        f"\n\n\n\n\nWARNING: Large norm detected in batch! {norms_K1}\n\n\n\n\n"
+                    )
 
             # Build steered vectors for this b
-            steered_KD = (normed_list[b] *  norms_K1 * steering_coefficient).to(dtype)  # (K_b, d)
+            steered_KD = (normed_list[b] * norms_K1 * steering_coefficient).to(
+                dtype
+            )  # (K_b, d)
 
             resid_BLD[b, pos_b, :] = steered_KD.detach() + orig_KD
 

@@ -65,7 +65,16 @@ from pao.oracle_sampler import SteeredAutoregressiveSampler
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "2"
+CODE_VERSION = "4"
+
+METHOD_NAMES = [
+    "logprob_offset",
+    "logprob_no_offset",
+    "bootstrap",
+    "sensitivity",
+    "mcmc",
+    "mcmc_agreement",
+]
 
 
 def setup_model(
@@ -287,23 +296,28 @@ def load_checkpoint(
             "Use --no-resume to start fresh."
         )
 
-    method_names = ["logprob", "bootstrap", "sensitivity", "mcmc", "mcmc_agreement"]
     raw = checkpoint["predictions"]
-    lengths = [len(raw.get(m, [])) for m in method_names]
+    missing = [m for m in METHOD_NAMES if m not in raw]
+    if missing:
+        raise ValueError(
+            f"Checkpoint missing methods {missing}. Use --no-resume to start fresh."
+        )
+
+    lengths = [len(raw.get(m, [])) for m in METHOD_NAMES]
     min_len = min(lengths)
     if len(set(lengths)) > 1:
         print(
-            f"Warning: method list length mismatch {dict(zip(method_names, lengths))}; truncating to {min_len}"
+            f"Warning: method list length mismatch {dict(zip(METHOD_NAMES, lengths))}; truncating to {min_len}"
         )
 
     predictions: dict[str, list[WordPrediction]] = {
-        m: [WordPrediction(**d) for d in raw.get(m, [])[:min_len]] for m in method_names
+        m: [WordPrediction(**d) for d in raw.get(m, [])[:min_len]] for m in METHOD_NAMES
     }
 
     # Build completed keys from any one method (all are written atomically together)
     completed_keys: set[tuple[str, str, str]] = {
         (p.target_word, p.verbalizer_prompt, p.context_prompt)
-        for p in predictions["logprob"]
+        for p in predictions[METHOD_NAMES[0]]
     }
     return predictions, completed_keys
 
@@ -350,13 +364,7 @@ def run_all_methods(
     target_words = TABOO_WORDS
     sampling = exp_cfg.sampling
 
-    all_predictions: dict[str, list[WordPrediction]] = {
-        "logprob": [],
-        "bootstrap": [],
-        "sensitivity": [],
-        "mcmc": [],
-        "mcmc_agreement": [],
-    }
+    all_predictions: dict[str, list[WordPrediction]] = {m: [] for m in METHOD_NAMES}
 
     total = len(target_words) * len(verbalizer_prompts) * len(context_prompts)
     checkpoint_path = Path(exp_cfg.output_dir) / "checkpoint.json"
@@ -400,35 +408,58 @@ def run_all_methods(
                 )
 
                 with sampler:
-                    # --- Method 1: Log-prob baseline ---
-                    # Confidence = max first-token probability. The chat template
-                    # puts the assistant's first content token right after the
-                    # generation prompt, so this directly measures how peaked
-                    # the oracle is on one candidate word.
+                    # --- Method 1a/1b: Log-prob baselines ---
+                    # We track both variants side-by-side:
+                    #  - with char-to-token offset mapping
+                    #  - offset-free prefix approximation
                     lp_result = logprob_confidence(
                         sampler=sampler,
                         context=oracle_ids,
+                        answer_vocab=TABOO_WORDS,
                         max_new_tokens=sampling.max_new_tokens,
                     )
-                    lp_word = extract_predicted_word(
-                        lp_result.generated_text, TABOO_WORDS
-                    )
-                    all_predictions["logprob"].append(
+
+                    lp_shared_metadata = {
+                        "extracted_word": lp_result.extracted_word,
+                        "first_token_entropy": lp_result.first_token_entropy,
+                        "first_token_max_prob": lp_result.first_token_max_prob,
+                        "mean_log_prob": lp_result.mean_log_prob,
+                        "min_log_prob": lp_result.min_log_prob,
+                        "geometric_mean_prob": lp_result.geometric_mean_prob,
+                        "word_prob_with_offset": lp_result.word_prob_with_offset,
+                        "word_n_tokens_with_offset": lp_result.word_n_tokens_with_offset,
+                        "word_prob_no_offset": lp_result.word_prob_no_offset,
+                        "word_n_tokens_no_offset": lp_result.word_n_tokens_no_offset,
+                    }
+
+                    all_predictions["logprob_offset"].append(
                         WordPrediction(
                             target_word=target_word,
                             context_prompt=ctx_prompt,
                             verbalizer_prompt=verbalizer_prompt,
                             predicted_answer=lp_result.generated_text,
-                            confidence=lp_result.first_token_max_prob,
-                            is_correct=lp_word == target_word,
-                            method="logprob",
+                            confidence=lp_result.word_prob_with_offset,
+                            is_correct=lp_result.extracted_word == target_word,
+                            method="logprob_offset",
                             method_metadata={
-                                "extracted_word": lp_word,
-                                "first_token_entropy": lp_result.first_token_entropy,
-                                "first_token_max_prob": lp_result.first_token_max_prob,
-                                "mean_log_prob": lp_result.mean_log_prob,
-                                "min_log_prob": lp_result.min_log_prob,
-                                "geometric_mean_prob": lp_result.geometric_mean_prob,
+                                **lp_shared_metadata,
+                                "confidence_variant": "with_offset",
+                            },
+                        )
+                    )
+
+                    all_predictions["logprob_no_offset"].append(
+                        WordPrediction(
+                            target_word=target_word,
+                            context_prompt=ctx_prompt,
+                            verbalizer_prompt=verbalizer_prompt,
+                            predicted_answer=lp_result.generated_text,
+                            confidence=lp_result.word_prob_no_offset,
+                            is_correct=lp_result.extracted_word == target_word,
+                            method="logprob_no_offset",
+                            method_metadata={
+                                **lp_shared_metadata,
+                                "confidence_variant": "no_offset",
                             },
                         )
                     )
@@ -582,8 +613,7 @@ def print_smoke_report(
     cfg: ExperimentConfig,
 ) -> None:
     """Pretty-print the smoke-test results so the user can sanity-check them."""
-    method_names = ["logprob", "bootstrap", "sensitivity", "mcmc", "mcmc_agreement"]
-    n = min(len(predictions[m]) for m in method_names)
+    n = min(len(predictions[m]) for m in METHOD_NAMES)
     if n == 0:
         print("  (no iterations processed — already fully resumed?)")
         return
@@ -598,13 +628,13 @@ def print_smoke_report(
     print(f"{'=' * 78}")
 
     for i in range(n):
-        target = predictions["logprob"][i].target_word
-        ctx = predictions["logprob"][i].context_prompt
-        verb = predictions["logprob"][i].verbalizer_prompt
+        target = predictions[METHOD_NAMES[0]][i].target_word
+        ctx = predictions[METHOD_NAMES[0]][i].context_prompt
+        verb = predictions[METHOD_NAMES[0]][i].verbalizer_prompt
         print(f"\n  [{i + 1}] target={target!r}")
         print(f"      context:    {ctx[:70]}{'...' if len(ctx) > 70 else ''}")
         print(f"      verbalizer: {verb[:70]}{'...' if len(verb) > 70 else ''}")
-        for m in method_names:
+        for m in METHOD_NAMES:
             p = predictions[m][i]
             ok = "✓" if p.is_correct else "✗"
             extracted = p.method_metadata.get(
