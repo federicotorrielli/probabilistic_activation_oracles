@@ -14,11 +14,13 @@ This script handles the full pipeline:
 import hashlib
 import json
 import os
+import random
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
 from typing import Optional
 
+import matplotlib
 import torch
 from peft import LoraConfig
 from tqdm import tqdm
@@ -26,6 +28,7 @@ from transformers import AutoModelForCausalLM, AutoTokenizer
 
 from pao.answer_extraction import extract_predicted_word
 from pao.calibration.metrics import (
+    CalibrationResult,
     auroc,
     confidence_separation,
     expected_calibration_error,
@@ -55,26 +58,48 @@ from pao.hf_utils import (
     load_tokenizer,
     set_seed,
 )
+from pao.methods.direct_elicitation import direct_elicitation
 from pao.methods.logprob_baseline import logprob_confidence
 from pao.methods.mcmc_oracle import mcmc_agreement, mcmc_oracle_sample
 from pao.methods.steering_sensitivity import steering_sensitivity_confidence
 from pao.methods.temperature_bootstrap import temperature_bootstrap
 from pao.oracle_sampler import SteeredAutoregressiveSampler
 
+matplotlib.use("Agg")
+import matplotlib.pyplot as plt
+
 # Bump when any on-disk-incompatible change is made to the experiment logic
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "4"
+CODE_VERSION = "5"
 
-METHOD_NAMES = [
-    "logprob_offset",
-    "logprob_no_offset",
-    "bootstrap",
-    "sensitivity",
-    "mcmc",
-    "mcmc_agreement",
-]
+
+def temperature_tag(temp: float) -> str:
+    """Format a temperature for stable method names / filenames."""
+    return str(temp).replace(".", "p")
+
+
+def get_method_names(sampling: SamplingConfig) -> list[str]:
+    """Return all per-run method names in a stable order."""
+    method_names = [
+        "logprob_offset",
+        "logprob_no_offset",
+        "direct",
+    ]
+    method_names.extend(
+        f"bootstrap_t{temperature_tag(temp)}"
+        for temp in sampling.bootstrap_temperatures
+    )
+    method_names.append("sensitivity")
+    method_names.extend(
+        f"mcmc_t{temperature_tag(temp)}" for temp in sampling.mcmc_temperatures
+    )
+    method_names.extend(
+        f"mcmc_agreement_t{temperature_tag(temp)}"
+        for temp in sampling.mcmc_temperatures
+    )
+    return method_names
 
 
 def setup_model(
@@ -296,28 +321,29 @@ def load_checkpoint(
             "Use --no-resume to start fresh."
         )
 
+    method_names = get_method_names(exp_cfg.sampling)
     raw = checkpoint["predictions"]
-    missing = [m for m in METHOD_NAMES if m not in raw]
+    missing = [m for m in method_names if m not in raw]
     if missing:
         raise ValueError(
             f"Checkpoint missing methods {missing}. Use --no-resume to start fresh."
         )
 
-    lengths = [len(raw.get(m, [])) for m in METHOD_NAMES]
+    lengths = [len(raw.get(m, [])) for m in method_names]
     min_len = min(lengths)
     if len(set(lengths)) > 1:
         print(
-            f"Warning: method list length mismatch {dict(zip(METHOD_NAMES, lengths))}; truncating to {min_len}"
+            f"Warning: method list length mismatch {dict(zip(method_names, lengths))}; truncating to {min_len}"
         )
 
     predictions: dict[str, list[WordPrediction]] = {
-        m: [WordPrediction(**d) for d in raw.get(m, [])[:min_len]] for m in METHOD_NAMES
+        m: [WordPrediction(**d) for d in raw.get(m, [])[:min_len]] for m in method_names
     }
 
     # Build completed keys from any one method (all are written atomically together)
     completed_keys: set[tuple[str, str, str]] = {
         (p.target_word, p.verbalizer_prompt, p.context_prompt)
-        for p in predictions[METHOD_NAMES[0]]
+        for p in predictions[method_names[0]]
     }
     return predictions, completed_keys
 
@@ -363,8 +389,9 @@ def run_all_methods(
     verbalizer_prompts = VERBALIZER_PROMPTS_TABOO
     target_words = TABOO_WORDS
     sampling = exp_cfg.sampling
+    method_names = get_method_names(sampling)
 
-    all_predictions: dict[str, list[WordPrediction]] = {m: [] for m in METHOD_NAMES}
+    all_predictions: dict[str, list[WordPrediction]] = {m: [] for m in method_names}
 
     total = len(target_words) * len(verbalizer_prompts) * len(context_prompts)
     checkpoint_path = Path(exp_cfg.output_dir) / "checkpoint.json"
@@ -464,34 +491,62 @@ def run_all_methods(
                         )
                     )
 
-                    # --- Method 2: Temperature bootstrap ---
-                    boot_result = temperature_bootstrap(
+                    # --- Method 3: Direct confidence elicitation ---
+                    elicitation_result = direct_elicitation(
                         sampler=sampler,
                         context=oracle_ids,
-                        answer_vocab=TABOO_WORDS,
-                        k=sampling.bootstrap_k,
-                        temperature=sampling.bootstrap_temperatures[0],
                         max_new_tokens=sampling.max_new_tokens,
                     )
-                    all_predictions["bootstrap"].append(
+                    elicited_word = extract_predicted_word(
+                        elicitation_result.answer_text, TABOO_WORDS
+                    )
+                    all_predictions["direct"].append(
                         WordPrediction(
                             target_word=target_word,
                             context_prompt=ctx_prompt,
                             verbalizer_prompt=verbalizer_prompt,
-                            predicted_answer=boot_result.mode_answer,
-                            confidence=boot_result.mode_frequency,
-                            is_correct=boot_result.mode_answer == target_word,
-                            method="bootstrap",
+                            predicted_answer=elicitation_result.answer_text,
+                            confidence=elicitation_result.parsed_confidence,
+                            is_correct=elicited_word == target_word,
+                            method="direct",
                             method_metadata={
-                                "raw_samples": boot_result.samples,
-                                "normalized_samples": boot_result.normalized_samples,
-                                "entropy": boot_result.entropy,
-                                "num_unique": boot_result.num_unique,
-                                "temperature": boot_result.temperature,
-                                "k": boot_result.k,
+                                "extracted_word": elicited_word,
+                                "confidence_text": elicitation_result.confidence_text,
+                                "raw_confidence_value": elicitation_result.raw_confidence_value,
                             },
                         )
                     )
+
+                    # --- Method 2: Temperature bootstrap ---
+                    for boot_temp in sampling.bootstrap_temperatures:
+                        method_name = f"bootstrap_t{temperature_tag(boot_temp)}"
+                        boot_result = temperature_bootstrap(
+                            sampler=sampler,
+                            context=oracle_ids,
+                            answer_vocab=TABOO_WORDS,
+                            k=sampling.bootstrap_k,
+                            temperature=boot_temp,
+                            max_new_tokens=sampling.max_new_tokens,
+                        )
+                        all_predictions[method_name].append(
+                            WordPrediction(
+                                target_word=target_word,
+                                context_prompt=ctx_prompt,
+                                verbalizer_prompt=verbalizer_prompt,
+                                predicted_answer=boot_result.mode_answer,
+                                confidence=boot_result.mode_frequency,
+                                is_correct=boot_result.mode_answer == target_word,
+                                method=method_name,
+                                method_metadata={
+                                    "raw_samples": boot_result.samples,
+                                    "normalized_samples": boot_result.normalized_samples,
+                                    "entropy": boot_result.entropy,
+                                    "num_unique": boot_result.num_unique,
+                                    "temperature": boot_result.temperature,
+                                    "k": boot_result.k,
+                                },
+                            )
+                        )
 
                     # --- Method 6: Steering-coefficient sensitivity ---
                     sens_result = steering_sensitivity_confidence(
@@ -521,67 +576,71 @@ def run_all_methods(
                         )
                     )
 
-                    # --- Method 3: Single MCMC sample (with acceptance ratio as signal) ---
-                    mcmc_result = mcmc_oracle_sample(
-                        sampler=sampler,
-                        context=oracle_ids,
-                        temperature=sampling.mcmc_temperatures[0],
-                        mcmc_steps=sampling.mcmc_steps,
-                        max_new_tokens=sampling.mcmc_max_new_tokens,
-                        block_num=sampling.mcmc_block_num,
-                    )
-                    mcmc_word = extract_predicted_word(
-                        mcmc_result.generated_text, TABOO_WORDS
-                    )
-                    all_predictions["mcmc"].append(
-                        WordPrediction(
-                            target_word=target_word,
-                            context_prompt=ctx_prompt,
-                            verbalizer_prompt=verbalizer_prompt,
-                            predicted_answer=mcmc_result.generated_text,
-                            confidence=1.0
-                            - mcmc_result.acceptance_ratio,  # low acceptance = high confidence
-                            is_correct=mcmc_word == target_word,
-                            method="mcmc",
-                            method_metadata={
-                                "extracted_word": mcmc_word,
-                                "acceptance_ratio": mcmc_result.acceptance_ratio,
-                                "alpha": mcmc_result.alpha,
-                                "temperature": mcmc_result.temperature,
-                            },
-                        )
-                    )
+                    # --- Method 4: Single MCMC sample (with acceptance ratio as signal) ---
+                    # --- Method 5: MCMC agreement ---
+                    for mcmc_temp in sampling.mcmc_temperatures:
+                        single_method = f"mcmc_t{temperature_tag(mcmc_temp)}"
+                        agree_method = f"mcmc_agreement_t{temperature_tag(mcmc_temp)}"
 
-                    # --- Method 4: MCMC agreement ---
-                    agree_result = mcmc_agreement(
-                        sampler=sampler,
-                        context=oracle_ids,
-                        answer_vocab=TABOO_WORDS,
-                        k=sampling.power_agreement_k,
-                        temperature=sampling.mcmc_temperatures[0],
-                        mcmc_steps=sampling.mcmc_steps,
-                        max_new_tokens=sampling.mcmc_max_new_tokens,
-                        block_num=sampling.mcmc_block_num,
-                    )
-                    all_predictions["mcmc_agreement"].append(
-                        WordPrediction(
-                            target_word=target_word,
-                            context_prompt=ctx_prompt,
-                            verbalizer_prompt=verbalizer_prompt,
-                            predicted_answer=agree_result.mode_answer,
-                            confidence=agree_result.mode_frequency,
-                            is_correct=agree_result.mode_answer == target_word,
-                            method="mcmc_agreement",
-                            method_metadata={
-                                "normalized_samples": agree_result.normalized_samples,
-                                "entropy": agree_result.entropy,
-                                "num_unique": agree_result.num_unique,
-                                "mean_acceptance_ratio": agree_result.mean_acceptance_ratio,
-                                "k": agree_result.k,
-                                "alpha": agree_result.alpha,
-                            },
+                        mcmc_result = mcmc_oracle_sample(
+                            sampler=sampler,
+                            context=oracle_ids,
+                            temperature=mcmc_temp,
+                            mcmc_steps=sampling.mcmc_steps,
+                            max_new_tokens=sampling.mcmc_max_new_tokens,
+                            block_num=sampling.mcmc_block_num,
                         )
-                    )
+                        mcmc_word = extract_predicted_word(
+                            mcmc_result.generated_text, TABOO_WORDS
+                        )
+                        all_predictions[single_method].append(
+                            WordPrediction(
+                                target_word=target_word,
+                                context_prompt=ctx_prompt,
+                                verbalizer_prompt=verbalizer_prompt,
+                                predicted_answer=mcmc_result.generated_text,
+                                confidence=1.0 - mcmc_result.acceptance_ratio,
+                                is_correct=mcmc_word == target_word,
+                                method=single_method,
+                                method_metadata={
+                                    "extracted_word": mcmc_word,
+                                    "acceptance_ratio": mcmc_result.acceptance_ratio,
+                                    "alpha": mcmc_result.alpha,
+                                    "temperature": mcmc_result.temperature,
+                                },
+                            )
+                        )
+
+                        agree_result = mcmc_agreement(
+                            sampler=sampler,
+                            context=oracle_ids,
+                            answer_vocab=TABOO_WORDS,
+                            k=sampling.power_agreement_k,
+                            temperature=mcmc_temp,
+                            mcmc_steps=sampling.mcmc_steps,
+                            max_new_tokens=sampling.mcmc_max_new_tokens,
+                            block_num=sampling.mcmc_block_num,
+                        )
+                        all_predictions[agree_method].append(
+                            WordPrediction(
+                                target_word=target_word,
+                                context_prompt=ctx_prompt,
+                                verbalizer_prompt=verbalizer_prompt,
+                                predicted_answer=agree_result.mode_answer,
+                                confidence=agree_result.mode_frequency,
+                                is_correct=agree_result.mode_answer == target_word,
+                                method=agree_method,
+                                method_metadata={
+                                    "normalized_samples": agree_result.normalized_samples,
+                                    "entropy": agree_result.entropy,
+                                    "num_unique": agree_result.num_unique,
+                                    "mean_acceptance_ratio": agree_result.mean_acceptance_ratio,
+                                    "k": agree_result.k,
+                                    "alpha": agree_result.alpha,
+                                    "temperature": mcmc_temp,
+                                },
+                            )
+                        )
 
                 pbar.update(1)
                 iterations_since_save += 1
@@ -613,7 +672,8 @@ def print_smoke_report(
     cfg: ExperimentConfig,
 ) -> None:
     """Pretty-print the smoke-test results so the user can sanity-check them."""
-    n = min(len(predictions[m]) for m in METHOD_NAMES)
+    method_names = get_method_names(cfg.sampling)
+    n = min(len(predictions[m]) for m in method_names)
     if n == 0:
         print("  (no iterations processed — already fully resumed?)")
         return
@@ -628,13 +688,13 @@ def print_smoke_report(
     print(f"{'=' * 78}")
 
     for i in range(n):
-        target = predictions[METHOD_NAMES[0]][i].target_word
-        ctx = predictions[METHOD_NAMES[0]][i].context_prompt
-        verb = predictions[METHOD_NAMES[0]][i].verbalizer_prompt
+        target = predictions[method_names[0]][i].target_word
+        ctx = predictions[method_names[0]][i].context_prompt
+        verb = predictions[method_names[0]][i].verbalizer_prompt
         print(f"\n  [{i + 1}] target={target!r}")
         print(f"      context:    {ctx[:70]}{'...' if len(ctx) > 70 else ''}")
         print(f"      verbalizer: {verb[:70]}{'...' if len(verb) > 70 else ''}")
-        for m in METHOD_NAMES:
+        for m in method_names:
             p = predictions[m][i]
             ok = "✓" if p.is_correct else "✗"
             extracted = p.method_metadata.get(
@@ -651,9 +711,76 @@ def print_smoke_report(
     print(f"\n{'=' * 78}")
 
 
+def summarize_predictions(predictions: list[WordPrediction]) -> dict[str, object]:
+    """Compute the shared evaluation statistics for one method."""
+    confidences = [p.confidence for p in predictions]
+    correctness = [p.is_correct for p in predictions]
+    cal = expected_calibration_error(confidences, correctness)
+    nll = negative_log_likelihood(confidences, correctness)
+    accuracy = sum(correctness) / max(len(correctness), 1)
+    auroc_score = auroc(confidences, correctness)
+    conf_correct, conf_wrong = confidence_separation(confidences, correctness)
+    return {
+        "accuracy": accuracy,
+        "calibration": cal,
+        "nll": nll,
+        "auroc": auroc_score,
+        "conf_given_correct": conf_correct,
+        "conf_given_wrong": conf_wrong,
+        "n_samples": len(predictions),
+    }
+
+
+def save_reliability_diagram(
+    calibration: CalibrationResult,
+    method_name: str,
+    output_path: Path,
+) -> None:
+    """Render a reliability diagram PNG for one method."""
+    output_path.parent.mkdir(parents=True, exist_ok=True)
+    fig, ax = plt.subplots(figsize=(5, 5))
+    ax.plot([0, 1], [0, 1], linestyle="--", color="0.6", linewidth=1)
+
+    points = [
+        (conf, acc, count)
+        for conf, acc, count in zip(
+            calibration.bin_confidences,
+            calibration.bin_accuracies,
+            calibration.bin_counts,
+        )
+        if count > 0
+    ]
+    if points:
+        xs, ys, counts = zip(*points, strict=False)
+        sizes = [30 + 6 * count for count in counts]
+        ax.scatter(xs, ys, s=sizes, color="#1f77b4", alpha=0.85)
+        ax.plot(xs, ys, color="#1f77b4", alpha=0.5, linewidth=1)
+
+    ax.set_xlim(0, 1)
+    ax.set_ylim(0, 1)
+    ax.set_xlabel("Confidence")
+    ax.set_ylabel("Accuracy")
+    ax.set_title(f"Reliability: {method_name}")
+    ax.grid(True, alpha=0.25)
+    fig.tight_layout()
+    fig.savefig(output_path, dpi=160)
+    plt.close(fig)
+
+
+def sample_controlled_n_words(seed: int, n_values: list[int]) -> dict[int, list[str]]:
+    """Match the fixed-seed controlled-N sampling protocol."""
+    rng = random.Random(seed)
+    sampled: dict[int, list[str]] = {}
+    for n in n_values:
+        if n <= len(TABOO_WORDS):
+            sampled[n] = rng.sample(TABOO_WORDS, n)
+    return sampled
+
+
 def evaluate_and_save(
     all_predictions: dict[str, list[WordPrediction]],
     output_dir: str,
+    seed: int,
 ):
     """Compute calibration metrics for each method and save results."""
     output_path = Path(output_dir)
@@ -662,14 +789,13 @@ def evaluate_and_save(
     summary = {}
 
     for method_name, predictions in all_predictions.items():
-        confidences = [p.confidence for p in predictions]
-        correctness = [p.is_correct for p in predictions]
-
-        cal = expected_calibration_error(confidences, correctness)
-        nll = negative_log_likelihood(confidences, correctness)
-        accuracy = sum(correctness) / max(len(correctness), 1)
-        auroc_score = auroc(confidences, correctness)
-        conf_correct, conf_wrong = confidence_separation(confidences, correctness)
+        stats = summarize_predictions(predictions)
+        cal = stats["calibration"]
+        nll = stats["nll"]
+        accuracy = stats["accuracy"]
+        auroc_score = stats["auroc"]
+        conf_correct = stats["conf_given_correct"]
+        conf_wrong = stats["conf_given_wrong"]
 
         print_calibration_summary(cal, method_name)
         print(f"  Accuracy:           {accuracy:.3f}")
@@ -688,6 +814,12 @@ def evaluate_and_save(
             "conf_given_wrong": conf_wrong,
             "n_samples": len(predictions),
         }
+
+        save_reliability_diagram(
+            cal,
+            method_name,
+            output_path / "reliability_diagrams" / f"{method_name}.png",
+        )
 
         # Save per-method details
         method_output = {
@@ -710,9 +842,65 @@ def evaluate_and_save(
         with open(output_path / f"{method_name}_results.json", "w") as f:
             json.dump(method_output, f, indent=2)
 
+    controlled_n_summary: dict[str, dict[str, float | int | list[str]]] = {}
+    controlled_n_words = sample_controlled_n_words(seed, [2, 5, 10, 20])
+    for n, words in controlled_n_words.items():
+        word_set = set(words)
+        subset_summary = {}
+        subset_dir = output_path / "controlled_n" / f"N{n}"
+        subset_dir.mkdir(parents=True, exist_ok=True)
+        for method_name, predictions in all_predictions.items():
+            subset_predictions = [p for p in predictions if p.target_word in word_set]
+            stats = summarize_predictions(subset_predictions)
+            cal = stats["calibration"]
+            subset_summary[method_name] = {
+                "accuracy": stats["accuracy"],
+                "ece": cal.ece,
+                "brier_score": cal.brier_score,
+                "nll": stats["nll"],
+                "auroc": stats["auroc"],
+                "conf_given_correct": stats["conf_given_correct"],
+                "conf_given_wrong": stats["conf_given_wrong"],
+                "n_samples": stats["n_samples"],
+            }
+            save_reliability_diagram(
+                cal,
+                f"{method_name} (N={n})",
+                subset_dir / f"{method_name}_reliability.png",
+            )
+            with open(subset_dir / f"{method_name}_results.json", "w") as f:
+                json.dump(
+                    {
+                        "method": method_name,
+                        "controlled_n": n,
+                        "target_words": words,
+                        "accuracy": stats["accuracy"],
+                        "calibration": {
+                            "ece": cal.ece,
+                            "brier_score": cal.brier_score,
+                            "bin_confidences": cal.bin_confidences,
+                            "bin_accuracies": cal.bin_accuracies,
+                            "bin_counts": cal.bin_counts,
+                        },
+                        "nll": stats["nll"],
+                        "auroc": stats["auroc"],
+                        "conf_given_correct": stats["conf_given_correct"],
+                        "conf_given_wrong": stats["conf_given_wrong"],
+                        "predictions": [asdict(p) for p in subset_predictions],
+                    },
+                    f,
+                    indent=2,
+                )
+        controlled_n_summary[f"N{n}"] = {
+            "target_words": words,
+            "methods": subset_summary,
+        }
+
     # Save summary comparison
     with open(output_path / "comparison_summary.json", "w") as f:
         json.dump(summary, f, indent=2)
+    with open(output_path / "controlled_n_summary.json", "w") as f:
+        json.dump(controlled_n_summary, f, indent=2)
 
     print(f"\n{'=' * 78}")
     print("  Method Comparison Summary")
@@ -747,8 +935,27 @@ if __name__ == "__main__":
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bootstrap-k", type=int, default=20)
+    parser.add_argument(
+        "--bootstrap-temps",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Override the bootstrap temperature sweep",
+    )
     parser.add_argument("--mcmc-steps", type=int, default=5)
-    parser.add_argument("--mcmc-temp", type=float, default=0.25)
+    parser.add_argument(
+        "--mcmc-temp",
+        type=float,
+        default=None,
+        help="Deprecated single-temperature override for MCMC methods",
+    )
+    parser.add_argument(
+        "--mcmc-temps",
+        type=float,
+        nargs="+",
+        default=None,
+        help="Override the MCMC temperature sweep",
+    )
     parser.add_argument("--agreement-k", type=int, default=10)
     parser.add_argument(
         "--checkpoint-every",
@@ -776,14 +983,21 @@ if __name__ == "__main__":
 
     os.chdir(AO_ROOT)  # So dataset paths resolve correctly
 
+    sampling_cfg = SamplingConfig(
+        bootstrap_k=args.bootstrap_k,
+        mcmc_steps=args.mcmc_steps,
+        power_agreement_k=args.agreement_k,
+    )
+    if args.bootstrap_temps is not None:
+        sampling_cfg.bootstrap_temperatures = args.bootstrap_temps
+    if args.mcmc_temps is not None:
+        sampling_cfg.mcmc_temperatures = args.mcmc_temps
+    elif args.mcmc_temp is not None:
+        sampling_cfg.mcmc_temperatures = [args.mcmc_temp]
+
     cfg = ExperimentConfig(
         model=ModelConfig(model_name=args.model),
-        sampling=SamplingConfig(
-            bootstrap_k=args.bootstrap_k,
-            mcmc_steps=args.mcmc_steps,
-            mcmc_temperatures=[args.mcmc_temp],
-            power_agreement_k=args.agreement_k,
-        ),
+        sampling=sampling_cfg,
         output_dir=args.output_dir,
         max_context_prompts=args.max_prompts,
         seed=args.seed,
@@ -825,4 +1039,4 @@ if __name__ == "__main__":
         no_resume=args.no_resume,
         preloaded_state=state,
     )
-    evaluate_and_save(predictions, cfg.output_dir)
+    evaluate_and_save(predictions, cfg.output_dir, seed=cfg.seed)

@@ -4,6 +4,8 @@
 
 Baker et al. 2025 ("Are Language Models Aware of the Road Not Taken?", arXiv:2511.04527) show that LLM hidden activations encode information about counterfactual outcomes, and that the effectiveness of residual-stream steering correlates with token-level uncertainty ($R \approx 0.57$ to $0.64$). Their key finding: steering sharply fails once a model "commits" to an answer, while uncertain models remain steerable. This paper validates that activations carry outcome-distribution information beyond surface tokens (directly supporting Methods 1 and 6 here), and motivates using activation-perturbation response as an uncertainty signal.
 
+We include six UQ methods (1 log-prob, 2 temperature bootstrap, 3 direct elicitation, 4 single MCMC, 5 MCMC agreement, 6 steering sensitivity). Methods 2, 4, and 5 are run across a small grid of temperatures / powers so we can characterize how calibration depends on the proposal sharpness.
+
 ## Background: what is an LLM and how does it work inside?
 
 A large language model (LLM) is a program that predicts text. You give it a sentence and it continues it, word by word. Internally, the model processes text through many layers of computation. At each layer, every word in the input gets represented as a long list of numbers called an "activation" (think of it as the model's internal thought about that word at that stage of processing). These activations are normally hidden: you only see the final output text, not the internal numbers.
@@ -38,9 +40,9 @@ The key property of power sampling: it concentrates on high-quality outputs whil
 
 Technically, given a base autoregressive model with token-level distribution $p(x_t | x_{<t})$, the target distribution is the power distribution $p(x)^{\alpha}$ (unnormalized). Since the normalization constant is intractable, the method uses Metropolis-Hastings MCMC. The generation is divided into B blocks. For each block: (1) generate a candidate continuation using a low-temperature proposal distribution $q$ (temperature = $1/\alpha$), (2) for each of S MCMC steps, pick a random position idx in the current block, resample from idx to end using $q$, and accept with probability $\min(1, \exp(\log_r))$ where $\log_r = \sum(\log p^{\alpha}(proposed)) + \sum(\log q(current)) - \sum(\log p^{\alpha}(current)) - \sum(\log q(proposed))$. This Metropolis-Hastings correction ensures the chain's stationary distribution is $p^{\alpha}$. The acceptance ratio (acceptances/attempts) is a diagnostic of the chain.
 
-## Our idea: five ways to measure oracle confidence
+## Our idea: six ways to measure oracle confidence
 
-We propose five methods to estimate how confident the oracle is, then compare them to see which gives the most reliable confidence scores.
+We propose six methods to estimate how confident the oracle is, then compare them to see which gives the most reliable confidence scores.
 
 ### Method 1: Look at the oracle's own probabilities
 
@@ -48,7 +50,7 @@ When the oracle generates the word "moon," it internally assigns probabilities t
 
 This is the simplest method. We just read out numbers the model already computes.
 
-Technically, we run greedy decoding (temperature=0) with output_logits=True. For each generated token $x_t$, we record the log-probability $\log p(x_t | x_{<t})$ from the unscaled logits. Our confidence metrics are: (a) mean sequence log-probability $(1/T) * \sum(\log p(x_t))$, (b) minimum token log-probability $\min_t(\log p(x_t))$, (c) the entropy of the first token distribution $H = -\sum(p * \log p)$ which captures how spread out the oracle's initial "guess" is, and (d) the geometric mean token probability $\exp(\text{mean log-prob})$. The oracle was trained with cross-entropy loss on correct answers, so these log-probs should reflect its epistemic uncertainty about the activation it received.
+Technically, we run greedy decoding (temperature=0) with output_logits=True. For each generated token $x_t$, we record the log-probability $\log p(x_t | x_{<t})$ from the unscaled logits. We log several diagnostics: (a) mean sequence log-probability $(1/T) * \sum(\log p(x_t))$, (b) minimum token log-probability $\min_t(\log p(x_t))$, (c) the entropy of the first token distribution $H = -\sum(p * \log p)$ which captures how spread out the oracle's initial "guess" is, and (d) the geometric mean token probability $\exp(\text{mean log-prob})$. The scalar confidence used in the experiment table is the joint probability of the extracted answer word under the generated tokenization. We report two implementations of that scalar in code: an offset-based alignment from the extracted word back to generated tokens, and an offset-free prefix approximation. The oracle was trained with cross-entropy loss on correct answers, so these probabilities should reflect its epistemic uncertainty about the activation it received.
 
 ### Method 2: Ask the same question many times
 
@@ -103,14 +105,14 @@ This gives us a clean experiment:
 
 1. Pick a context prompt (e.g., "give me a hint about your secret").
 2. For each of the 20 model versions, collect the internal activations when it processes that prompt.
-3. Feed each set of activations to the oracle and ask "what is the secret word?" using each of our five methods.
+3. Feed each set of activations to the oracle and ask "what is the secret word?" using each of our six methods.
 4. Each method produces both an answer and a confidence score. We know the correct answer for each model version.
 
 A perfectly calibrated method would assign high confidence when it gets the right word and low confidence when it gets the wrong word. We measure calibration using standard statistical tools:
 
 - **Expected Calibration Error (ECE)**: group predictions by their confidence level (e.g., all predictions where confidence was 80-90%), and check whether the accuracy in each group matches the confidence. If the 80-90% group is actually right 85% of the time, the method is well calibrated.
 - **Brier score**: the average squared difference between the confidence and the actual outcome (1 if correct, 0 if wrong). Lower is better.
-- **Reliability diagrams**: a plot of confidence vs. actual accuracy. A perfectly calibrated method follows the diagonal.
+- **Reliability diagrams**: a plot of confidence vs. actual accuracy. A perfectly calibrated method follows the diagonal. The code now saves one diagram per method (and per controlled-N subset) alongside the JSON summaries.
 
 We also run a **controlled-N variant**: instead of all 20 words, use subsets of 2, 5, 10, or 20 words. With only 2 possible words, the task is easier; with 20, it is harder. We check whether each method's calibration degrades gracefully as the task gets more difficult.
 
