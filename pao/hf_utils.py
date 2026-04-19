@@ -251,9 +251,16 @@ def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = F
     if use_lora:
         if "pythia" in model_name:
             raise ValueError("Need to determine how to get submodule for LoRA")
-        elif "gemma-3" in model_name or "gemma-4" in model_name:
-            # Gemma 3/4 are multimodal; text layers live under .language_model
+        elif "gemma-3" in model_name:
             return model.base_model.language_model.layers[layer]
+        elif "gemma-4" in model_name:
+            # PeftModel -> base_model.model is the original HF model. AutoModelForCausalLM
+            # may load either Gemma4ForConditionalGeneration (multimodal; text sits under
+            # .model.language_model) or Gemma4ForCausalLM (text-only; .model is the
+            # Gemma4TextModel itself). Probe for .language_model to handle both.
+            inner = model.base_model.model.model
+            text_model = getattr(inner, "language_model", inner)
+            return text_model.layers[layer]
         elif (
             "gemma-2" in model_name
             or "mistral" in model_name
@@ -266,8 +273,16 @@ def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = F
 
     if "pythia" in model_name:
         return model.gpt_neox.layers[layer]
-    elif "gemma-3" in model_name or "gemma-4" in model_name:
+    elif "gemma-3" in model_name:
         return model.language_model.layers[layer]
+    elif "gemma-4" in model_name:
+        # See the LoRA branch above: Gemma4ForConditionalGeneration nests a
+        # Gemma4TextModel under .model.language_model, while Gemma4ForCausalLM has
+        # the text model directly at .model. Probe so we don't care which one
+        # AutoModelForCausalLM instantiated.
+        inner = model.model
+        text_model = getattr(inner, "language_model", inner)
+        return text_model.layers[layer]
     elif (
         "gemma-2" in model_name
         or "mistral" in model_name
