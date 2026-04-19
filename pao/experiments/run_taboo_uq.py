@@ -74,7 +74,7 @@ import matplotlib.pyplot as plt
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "5"
+CODE_VERSION = "6"
 
 
 def temperature_tag(temp: float) -> str:
@@ -150,7 +150,13 @@ def prepare_activation_and_sampler(
         NOT attached yet; the caller must use ``with sampler:`` or call
         ``sampler.attach_hook()``.
     """
-    # Encode context prompt for activation collection
+    # Collect activations from the prompt-only sequence under the target LoRA.
+    # This matches the upstream taboo eval contract: base_experiment.py
+    # defaults add_response_to_context_prompt=False, and
+    # experiments/taboo_open_ended_eval.py uses that default. The oracle was
+    # trained to read activations at the last |segment_start_idx| tokens of
+    # the user turn (with apply_chat_template(add_generation_prompt=True)),
+    # so we must feed the same shape at inference.
     formatted_prompt = [{"role": "user", "content": context_prompt}]
     inputs_BL = encode_messages(
         tokenizer=tokenizer,
@@ -160,7 +166,6 @@ def prepare_activation_and_sampler(
         device=device,
     )
 
-    # Collect activations from the target LoRA model
     num_layers = get_text_config(model).num_hidden_layers
     act_layer = int(num_layers * (cfg.selected_layer_percent / 100))
 

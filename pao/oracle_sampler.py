@@ -54,6 +54,28 @@ class SteeredAutoregressiveSampler:
         self._steering_coefficient = steering_coefficient
         self._dtype = dtype
 
+    def _get_generation_stop_ids(self) -> int | list[int] | None:
+        eos_token_id = getattr(self.model.generation_config, "eos_token_id", None)
+        if eos_token_id is not None:
+            return eos_token_id
+        return self.tokenizer.eos_token_id
+
+    def _get_pad_token_id(self) -> int | None:
+        pad_token_id = getattr(self.model.generation_config, "pad_token_id", None)
+        if pad_token_id is not None:
+            return pad_token_id
+        return self.tokenizer.pad_token_id
+
+    def _trim_generated_ids(self, gen_ids: list[int]) -> list[int]:
+        eos_token_id = self._get_generation_stop_ids()
+        if eos_token_id is None:
+            return gen_ids
+        stop_ids = eos_token_id if isinstance(eos_token_id, list) else [eos_token_id]
+        for idx, token_id in enumerate(gen_ids):
+            if token_id in stop_ids:
+                return gen_ids[:idx]
+        return gen_ids
+
     def attach_hook(self):
         """Register the steering hook persistently on the submodule."""
         if self._handle is not None:
@@ -135,18 +157,23 @@ class SteeredAutoregressiveSampler:
             input_ids = torch.tensor(
                 [context], dtype=torch.long, device=self.device
             ).repeat(num_samples, 1)
+            attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
             gen_kwargs = {
                 "max_new_tokens": max_new_tokens,
                 "do_sample": do_sample,
-                "eos_token_id": self.tokenizer.eos_token_id,
-                "pad_token_id": self.tokenizer.eos_token_id,
+                "eos_token_id": self._get_generation_stop_ids(),
+                "pad_token_id": self._get_pad_token_id(),
                 "return_dict_in_generate": True,
             }
             if do_sample:
                 gen_kwargs["temperature"] = temperature
 
-            output = self.model.generate(input_ids=input_ids, **gen_kwargs)
+            output = self.model.generate(
+                input_ids=input_ids,
+                attention_mask=attention_mask,
+                **gen_kwargs,
+            )
         finally:
             batched_handle.remove()
             if had_hook:
@@ -154,11 +181,9 @@ class SteeredAutoregressiveSampler:
 
         c = len(context)
         texts: list[str] = []
-        eos_id = self.tokenizer.eos_token_id
         for b in range(num_samples):
             gen_ids = output.sequences[b][c:].tolist()
-            if eos_id is not None and eos_id in gen_ids:
-                gen_ids = gen_ids[: gen_ids.index(eos_id)]
+            gen_ids = self._trim_generated_ids(gen_ids)
             texts.append(self.tokenizer.decode(gen_ids, skip_special_tokens=True))
         return texts
 
@@ -176,12 +201,13 @@ class SteeredAutoregressiveSampler:
         the persistent steering hook.
         """
         input_ids = torch.tensor([context], dtype=torch.long, device=self.device)
+        attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         gen_kwargs = {
             "max_new_tokens": max_new_tokens,
             "do_sample": do_sample,
-            "eos_token_id": self.tokenizer.eos_token_id,
-            "pad_token_id": self.tokenizer.eos_token_id,
+            "eos_token_id": self._get_generation_stop_ids(),
+            "pad_token_id": self._get_pad_token_id(),
             "return_dict_in_generate": True,
             "output_scores": True,
             "output_logits": True,
@@ -189,7 +215,11 @@ class SteeredAutoregressiveSampler:
         if do_sample:
             gen_kwargs["temperature"] = temperature
 
-        output = self.model.generate(input_ids=input_ids, **gen_kwargs)
+        output = self.model.generate(
+            input_ids=input_ids,
+            attention_mask=attention_mask,
+            **gen_kwargs,
+        )
 
         c = len(context)
         tokens = output.sequences[0][c:]
@@ -227,13 +257,15 @@ class SteeredAutoregressiveSampler:
     ) -> tuple[list[int], list[float]]:
         """Greedy generation returning token_ids and per-token log-probs."""
         input_ids = torch.tensor([context], dtype=torch.long, device=self.device)
+        attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
         output = self.model.generate(
             input_ids=input_ids,
+            attention_mask=attention_mask,
             max_new_tokens=max_new_tokens,
             do_sample=False,
-            eos_token_id=self.tokenizer.eos_token_id,
-            pad_token_id=self.tokenizer.eos_token_id,
+            eos_token_id=self._get_generation_stop_ids(),
+            pad_token_id=self._get_pad_token_id(),
             return_dict_in_generate=True,
             output_scores=True,
             output_logits=True,
