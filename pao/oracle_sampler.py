@@ -14,7 +14,7 @@ import torch
 import torch.nn.functional as F
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-from pao.hf_utils import get_hf_activation_steering_hook
+from pao.hf_utils import get_hf_activation_steering_hook, get_text_config
 
 
 class SteeredAutoregressiveSampler:
@@ -44,7 +44,7 @@ class SteeredAutoregressiveSampler:
         self.model = model
         self.tokenizer = tokenizer
         self.device = device
-        self.block_size = self.model.config.max_position_embeddings
+        self.block_size = get_text_config(self.model).max_position_embeddings
         self.submodule = submodule
         self._handle: Optional[torch.utils.hooks.RemovableHook] = None
 

@@ -54,6 +54,7 @@ from pao.hf_utils import (
     find_pattern_in_tokens,
     get_hf_submodule,
     get_introspection_prefix,
+    get_text_config,
     load_lora_adapter,
     load_model,
     load_tokenizer,
@@ -159,7 +160,8 @@ def prepare_activation_and_sampler(
     )
 
     # Collect activations from the target LoRA model
-    act_layer = int(model.config.num_hidden_layers * (cfg.selected_layer_percent / 100))
+    num_layers = get_text_config(model).num_hidden_layers
+    act_layer = int(num_layers * (cfg.selected_layer_percent / 100))
 
     model.set_adapter(target_adapter)
     submodules = {act_layer: get_hf_submodule(model, act_layer)}

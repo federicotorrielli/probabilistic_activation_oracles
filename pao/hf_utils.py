@@ -232,6 +232,18 @@ def collect_activations_multiple_layers(
     return activations_BLD_by_layer
 
 
+def get_text_config(model: AutoModelForCausalLM):
+    """Return the config object that holds text-model attributes.
+
+    Multimodal models (Gemma 3/4) nest text params (`num_hidden_layers`,
+    `hidden_size`, `max_position_embeddings`, ...) under `config.text_config`.
+    Flat decoder configs (Qwen, Llama, Mistral, Gemma 2) expose them directly
+    on `config`. This helper returns whichever object carries them so callers
+    don't have to branch per architecture.
+    """
+    return getattr(model.config, "text_config", model.config)
+
+
 def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = False):
     """Gets the residual stream submodule for HF transformers"""
     model_name = model.config._name_or_path
@@ -387,6 +399,7 @@ __all__ = [
     "get_hf_activation_steering_hook",
     "get_hf_submodule",
     "get_introspection_prefix",
+    "get_text_config",
     "load_lora_adapter",
     "load_model",
     "load_tokenizer",
