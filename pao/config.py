@@ -7,6 +7,43 @@ from typing import Optional
 
 import torch
 
+
+# --- Model presets ---------------------------------------------------------
+#
+# Each preset bundles the three HF paths an experiment needs:
+#   (base model, verbalizer/oracle LoRA, target-LoRA template with {word})
+#
+# Keys are the public identifiers used by the --preset CLI flag and as the
+# top-level results/ subdirectory name (so results stay sorted by model).
+
+MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
+    "qwen3-8b": (
+        "Qwen/Qwen3-8B",
+        "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B",
+        "adamkarvonen/Qwen3-8B-taboo-{word}_50_mix",
+    ),
+    "gemma-4-e2b": (
+        "google/gemma-4-E2B-it",
+        "EvilScript/activation-oracle-gemma-4-E2B-it",
+        "EvilScript/taboo-{word}-gemma-4-E2B-it",
+    ),
+    "gemma-4-e4b": (
+        "google/gemma-4-E4B-it",
+        "EvilScript/activation-oracle-gemma-4-E4B-it",
+        "EvilScript/taboo-{word}-gemma-4-E4B-it",
+    ),
+    "gemma-4-26b-a4b": (
+        "google/gemma-4-26B-A4B-it",
+        "EvilScript/activation-oracle-gemma-4-26B-A4B-it",
+        "EvilScript/taboo-{word}-gemma-4-26B-A4B-it",
+    ),
+    "gemma-4-31b": (
+        "google/gemma-4-31B-it",
+        "EvilScript/activation-oracle-gemma-4-31B-it",
+        "EvilScript/taboo-{word}-gemma-4-31B-it",
+    ),
+}
+
 # AO_ROOT is used purely as a dataset path (datasets/taboo/...).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AO_ROOT = PROJECT_ROOT / "activation_oracles"
@@ -51,17 +88,15 @@ VERBALIZER_PROMPTS_TABOO = [
 class ModelConfig:
     """Which models and LoRAs to use."""
 
-    model_name: str = "Qwen/Qwen3-8B"
+    model_name: str = MODEL_PRESETS["qwen3-8b"][0]
     dtype: torch.dtype = torch.bfloat16
     device: str = "cuda"
 
     # Oracle (verbalizer) LoRA
-    verbalizer_lora_path: str = (
-        "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B"
-    )
+    verbalizer_lora_path: str = MODEL_PRESETS["qwen3-8b"][1]
 
     # Template for target LoRAs (taboo task)
-    target_lora_template: str = "adamkarvonen/Qwen3-8B-taboo-{word}_50_mix"
+    target_lora_template: str = MODEL_PRESETS["qwen3-8b"][2]
 
     # Activation collection / injection
     injection_layer: int = 1
@@ -72,6 +107,23 @@ class ModelConfig:
     # Segment positions for activation collection
     segment_start_idx: int = -10
     segment_end_idx: int = 0
+
+    @classmethod
+    def from_preset(cls, preset: str, **overrides) -> "ModelConfig":
+        """Build a ModelConfig from a MODEL_PRESETS key.
+
+        Extra kwargs override preset-derived fields (e.g. dtype, injection_layer).
+        """
+        if preset not in MODEL_PRESETS:
+            known = ", ".join(sorted(MODEL_PRESETS))
+            raise ValueError(f"Unknown preset {preset!r}. Known: {known}")
+        model_name, verbalizer, target_template = MODEL_PRESETS[preset]
+        return cls(
+            model_name=model_name,
+            verbalizer_lora_path=verbalizer,
+            target_lora_template=target_template,
+            **overrides,
+        )
 
 
 @dataclass

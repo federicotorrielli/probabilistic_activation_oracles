@@ -40,6 +40,7 @@ from pao.calibration.secret_word_calibration import (
 )
 from pao.config import (
     AO_ROOT,
+    MODEL_PRESETS,
     TABOO_WORDS,
     VERBALIZER_PROMPTS_TABOO,
     ExperimentConfig,
@@ -926,12 +927,24 @@ if __name__ == "__main__":
     import argparse
 
     parser = argparse.ArgumentParser(description="Run taboo UQ experiments")
-    parser.add_argument("--model", default="Qwen/Qwen3-8B", help="Base model name")
+    parser.add_argument(
+        "--preset",
+        default="qwen3-8b",
+        choices=sorted(MODEL_PRESETS),
+        help="Model preset (selects base model + verbalizer LoRA + target-LoRA template)",
+    )
+    parser.add_argument(
+        "--model",
+        default=None,
+        help="Override the preset's base model id (advanced; leaves verbalizer/target from preset)",
+    )
     parser.add_argument(
         "--max-prompts", type=int, default=None, help="Limit context prompts"
     )
     parser.add_argument(
-        "--output-dir", default="results/taboo_uq", help="Output directory"
+        "--output-dir",
+        default=None,
+        help="Output directory (default: results/<preset>/taboo_uq)",
     )
     parser.add_argument("--seed", type=int, default=42)
     parser.add_argument("--bootstrap-k", type=int, default=20)
@@ -995,10 +1008,16 @@ if __name__ == "__main__":
     elif args.mcmc_temp is not None:
         sampling_cfg.mcmc_temperatures = [args.mcmc_temp]
 
+    model_cfg = ModelConfig.from_preset(args.preset)
+    if args.model is not None:
+        model_cfg.model_name = args.model
+
+    output_dir = args.output_dir or f"results/{args.preset}/taboo_uq"
+
     cfg = ExperimentConfig(
-        model=ModelConfig(model_name=args.model),
+        model=model_cfg,
         sampling=sampling_cfg,
-        output_dir=args.output_dir,
+        output_dir=output_dir,
         max_context_prompts=args.max_prompts,
         seed=args.seed,
     )
