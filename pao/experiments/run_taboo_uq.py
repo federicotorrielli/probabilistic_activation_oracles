@@ -138,7 +138,7 @@ def prepare_activation_and_sampler(
     verbalizer_adapter: Optional[str],
     context_prompt: str,
     verbalizer_prompt: str,
-) -> tuple[SteeredAutoregressiveSampler, list[int]]:
+) -> tuple[SteeredAutoregressiveSampler, list[int], list[dict[str, str]]]:
     """Collect activations from the already-loaded target LoRA and build a sampler.
 
     The target adapter must already be loaded (by the caller, once per target_word).
@@ -146,8 +146,9 @@ def prepare_activation_and_sampler(
     loads or deletes.
 
     Returns:
-        (sampler, oracle_context_ids). The sampler's hook is NOT attached yet;
-        the caller must use ``with sampler:`` or call ``sampler.attach_hook()``.
+        (sampler, oracle_context_ids, oracle_messages). The sampler's hook is
+        NOT attached yet; the caller must use ``with sampler:`` or call
+        ``sampler.attach_hook()``.
     """
     # Encode context prompt for activation collection
     formatted_prompt = [{"role": "user", "content": context_prompt}]
@@ -203,8 +204,9 @@ def prepare_activation_and_sampler(
     )
     # transformers >=5 defaults apply_chat_template to return a BatchEncoding;
     # pass return_dict=False so we get a flat list of token ids here.
+    oracle_messages = [{"role": "user", "content": oracle_user_content}]
     oracle_ids = tokenizer.apply_chat_template(
-        [{"role": "user", "content": oracle_user_content}],
+        oracle_messages,
         tokenize=True,
         add_generation_prompt=True,
         return_tensors=None,
@@ -240,7 +242,7 @@ def prepare_activation_and_sampler(
         dtype=cfg.dtype,
     )
 
-    return sampler, oracle_ids
+    return sampler, oracle_ids, oracle_messages
 
 
 def config_hash(exp_cfg: ExperimentConfig) -> str:
@@ -426,7 +428,7 @@ def run_all_methods(
                     pbar.update(1)
                     continue
 
-                sampler, oracle_ids = prepare_activation_and_sampler(
+                sampler, oracle_ids, oracle_messages = prepare_activation_and_sampler(
                     model=model,
                     tokenizer=tokenizer,
                     device=device,
@@ -498,6 +500,7 @@ def run_all_methods(
                     elicitation_result = direct_elicitation(
                         sampler=sampler,
                         context=oracle_ids,
+                        oracle_messages=oracle_messages,
                         max_new_tokens=sampling.max_new_tokens,
                     )
                     elicited_word = extract_predicted_word(

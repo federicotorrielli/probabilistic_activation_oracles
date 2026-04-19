@@ -79,15 +79,16 @@ def main():
     kv_shared = getattr(text_cfg, "num_kv_shared_layers", 0)
     print("num_kv_shared_layers:", kv_shared)
     expected = text_cfg.num_hidden_layers * 7 - kv_shared * 2
-    print(f"expected LoRA modules (q,k,v,o,gate,up,down × layers − kv-shared × 2): {expected}")
+    print(
+        f"expected LoRA modules (q,k,v,o,gate,up,down × layers − kv-shared × 2): {expected}"
+    )
 
     # -- 3. render oracle prompt -----------------------------------------------
     print("\n=== 3. ORACLE PROMPT RENDER ===")
     num_positions = 10
     act_layer = int(text_cfg.num_hidden_layers * (cfg.selected_layer_percent / 100))
     oracle_user_content = (
-        get_introspection_prefix(act_layer, num_positions)
-        + VERBALIZER_PROMPTS_TABOO[0]
+        get_introspection_prefix(act_layer, num_positions) + VERBALIZER_PROMPTS_TABOO[0]
     )
     rendered = tokenizer.apply_chat_template(
         [{"role": "user", "content": oracle_user_content}],
@@ -128,7 +129,7 @@ def main():
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
-    gen = tokenizer.decode(out[0, trivial.shape[1]:], skip_special_tokens=False)
+    gen = tokenizer.decode(out[0, trivial.shape[1] :], skip_special_tokens=False)
     print("generation:", repr(gen))
 
     # -- 5. verbalizer-only on oracle prompt (NO STEERING) ---------------------
@@ -141,7 +142,7 @@ def main():
             do_sample=False,
             pad_token_id=tokenizer.eos_token_id,
         )
-    gen = tokenizer.decode(out[0, ids.shape[1]:], skip_special_tokens=False)
+    gen = tokenizer.decode(out[0, ids.shape[1] :], skip_special_tokens=False)
     print("generation:", repr(gen))
 
     # -- 6. full steered generation --------------------------------------------
@@ -152,7 +153,7 @@ def main():
     )
     with open(ctx_prompts_path) as f:
         ctx = next(line.strip() for line in f if line.strip())
-    sampler, oracle_ids_pipeline = prepare_activation_and_sampler(
+    sampler, oracle_ids_pipeline, _oracle_messages = prepare_activation_and_sampler(
         model=model,
         tokenizer=tokenizer,
         device=device,

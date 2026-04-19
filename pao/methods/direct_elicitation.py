@@ -53,6 +53,7 @@ def parse_confidence_number(text: str) -> Optional[float]:
 def direct_elicitation(
     sampler: SteeredAutoregressiveSampler,
     context: list[int],
+    oracle_messages: list[dict[str, str]],
     confidence_prompt: str = "On a scale of 0 to 100, how confident are you in your answer? Reply with just the number.",
     max_new_tokens: int = 20,
     max_confidence_tokens: int = 10,
@@ -83,13 +84,24 @@ def direct_elicitation(
     answer_ids = full_seq[len(context) :]
     answer_text = sampler.tokenizer.decode(answer_ids, skip_special_tokens=True)
 
-    # Turn 2: Append the answer and confidence prompt, generate again
-    # Build: [original_context] + [answer] + [confidence_prompt]
-    confidence_suffix = f" {answer_text}\n{confidence_prompt}"
-    confidence_ids = sampler.tokenizer.encode(
-        confidence_suffix, add_special_tokens=False
+    # Turn 2: Re-render the conversation as a real follow-up chat turn.
+    turn2_messages = oracle_messages + [
+        {"role": "assistant", "content": answer_text},
+        {"role": "user", "content": confidence_prompt},
+    ]
+    turn2_context = sampler.tokenizer.apply_chat_template(
+        turn2_messages,
+        tokenize=True,
+        add_generation_prompt=True,
+        return_tensors=None,
+        return_dict=False,
+        padding=False,
+        enable_thinking=False,
     )
-    turn2_context = full_seq + confidence_ids
+    if not isinstance(turn2_context, list) or (
+        turn2_context and not isinstance(turn2_context[0], int)
+    ):
+        raise TypeError("Expected list of token ids from tokenizer.apply_chat_template")
 
     turn2_seq, _, _ = sampler.generate_with_logprobs(
         context=turn2_context,
