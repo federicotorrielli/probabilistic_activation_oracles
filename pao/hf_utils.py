@@ -106,9 +106,9 @@ def load_tokenizer(
     tokenizer = AutoTokenizer.from_pretrained(model_name)
     tokenizer.padding_side = "left"
 
-    if not tokenizer.pad_token_id:
+    if tokenizer.pad_token_id is None:
         tokenizer.pad_token_id = tokenizer.eos_token_id
-    if not tokenizer.bos_token_id:
+    if tokenizer.bos_token_id is None:
         tokenizer.bos_token_id = tokenizer.eos_token_id
     return tokenizer
 
@@ -232,16 +232,71 @@ def collect_activations_multiple_layers(
     return activations_BLD_by_layer
 
 
-def get_text_config(model: AutoModelForCausalLM):
+def get_text_config(model_or_config):
     """Return the config object that holds text-model attributes.
 
     Multimodal models (Gemma 3/4) nest text params (`num_hidden_layers`,
     `hidden_size`, `max_position_embeddings`, ...) under `config.text_config`.
     Flat decoder configs (Qwen, Llama, Mistral, Gemma 2) expose them directly
     on `config`. This helper returns whichever object carries them so callers
-    don't have to branch per architecture.
+    don't have to branch per architecture. Accepts either a loaded model or
+    a `PretrainedConfig` directly.
     """
-    return getattr(model.config, "text_config", model.config)
+    cfg = getattr(model_or_config, "config", model_or_config)
+    return getattr(cfg, "text_config", cfg)
+
+
+def resolve_oracle_layers(
+    text_cfg,
+    layer_percents: list[int] | None = None,
+) -> tuple[int, list[int]]:
+    """Pick the read/inject layers the activation oracle was trained on.
+
+    Mirrors the rule used by the AO trainer in `nl_probes/gemma4_sft.py`:
+
+    * For models exposing `layer_types` with at least one `"full_attention"`
+      entry (Gemma 4's mixed sliding/full attention stack), each requested
+      percent is snapped to the nearest full-attention layer, and the integer
+      percent that maps to that layer via `int(num_layers * p / 100)` is
+      returned. The injection layer is the first full-attention layer.
+    * For every other architecture (Qwen, Llama, Gemma 2, Gemma 3 text-only,
+      Mistral, ...) the percents pass through unchanged and the injection
+      layer defaults to 1, matching the historical AO recipe.
+
+    This is the single rule shared between training and inference: as long as
+    the trainer used the same rule, pao reads from the layer the oracle was
+    actually trained on.
+    """
+    if layer_percents is None:
+        layer_percents = [25, 50, 75]
+
+    layer_types = getattr(text_cfg, "layer_types", None)
+    full = (
+        [i for i, t in enumerate(layer_types) if t == "full_attention"]
+        if layer_types
+        else []
+    )
+
+    # No mixed attention pattern -> historical AO defaults apply.
+    if not full or len(full) == len(layer_types):
+        return 1, list(layer_percents)
+
+    n = text_cfg.num_hidden_layers
+    corrected: list[int] = []
+    for p in layer_percents:
+        target = n * (p / 100)
+        layer = min(full, key=lambda l: (abs(l - target), l))
+        # Back-solve the integer percent q in [1, 99] that satisfies
+        # int(n * q / 100) == layer, picking the q closest to the original
+        # request. There is always at least one such q for n >= 100/(layer+1).
+        candidates = [q for q in range(1, 100) if int(n * (q / 100)) == layer]
+        if not candidates:
+            # Fallback: keep the original percent. Should not happen for any
+            # Gemma 4 variant currently shipped.
+            corrected.append(p)
+        else:
+            corrected.append(min(candidates, key=lambda q: (abs(q - p), q)))
+    return full[0], corrected
 
 
 def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = False):
@@ -415,6 +470,7 @@ __all__ = [
     "get_hf_submodule",
     "get_introspection_prefix",
     "get_text_config",
+    "resolve_oracle_layers",
     "load_lora_adapter",
     "load_model",
     "load_tokenizer",

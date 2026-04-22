@@ -7,7 +7,6 @@ from typing import Optional
 
 import torch
 
-
 # --- Model presets ---------------------------------------------------------
 #
 # Each preset bundles the three HF paths an experiment needs:
@@ -21,6 +20,11 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
         "Qwen/Qwen3-8B",
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-8B",
         "adamkarvonen/Qwen3-8B-taboo-{word}_50_mix",
+    ),
+    "qwen3-32b": (
+        "Qwen/Qwen3-32B",
+        "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-32B",
+        "adamkarvonen/Qwen3-32B-taboo-{word}",
     ),
     "gemma-4-e2b": (
         "google/gemma-4-E2B-it",
@@ -112,16 +116,82 @@ class ModelConfig:
     def from_preset(cls, preset: str, **overrides) -> "ModelConfig":
         """Build a ModelConfig from a MODEL_PRESETS key.
 
-        Extra kwargs override preset-derived fields (e.g. dtype, injection_layer).
+        Layer-related fields (`injection_layer`, `layer_percents`,
+        `selected_layer_percent`) are auto-resolved from the base model's
+        config so Gemma 4's mixed sliding/full attention stack is read at the
+        full-attention layers the oracle was trained on. For Qwen / Llama /
+        Gemma 2 / Gemma 3 text-only / Mistral the resolver is a no-op and the
+        historical defaults pass through unchanged.
+
+        Extra kwargs override every preset-derived field, including the
+        auto-resolved layers, so callers can still pin a specific layout.
         """
         if preset not in MODEL_PRESETS:
             known = ", ".join(sorted(MODEL_PRESETS))
             raise ValueError(f"Unknown preset {preset!r}. Known: {known}")
         model_name, verbalizer, target_template = MODEL_PRESETS[preset]
+
+        # Default layers: take the dataclass defaults (or whatever the caller
+        # passed via overrides), then snap them to the architecture-correct
+        # values for this model.
+        default = cls(
+            model_name=model_name,
+            verbalizer_lora_path=verbalizer,
+            target_lora_template=target_template,
+        )
+        layer_percents = overrides.pop("layer_percents", default.layer_percents)
+        selected_layer_percent = overrides.pop(
+            "selected_layer_percent", default.selected_layer_percent
+        )
+        injection_layer = overrides.pop("injection_layer", None)
+
+        try:
+            from transformers import AutoConfig
+
+            from pao.hf_utils import get_text_config, resolve_oracle_layers
+
+            text_cfg = get_text_config(AutoConfig.from_pretrained(model_name))
+            resolved_inject, resolved_percents = resolve_oracle_layers(
+                text_cfg, layer_percents
+            )
+            if injection_layer is None:
+                injection_layer = resolved_inject
+            old_percents = list(layer_percents)
+            layer_percents = resolved_percents
+            # Snap selected_layer_percent to whichever resolved percent is
+            # closest to the originally requested value.
+            old_selected = selected_layer_percent
+            selected_layer_percent = min(
+                resolved_percents,
+                key=lambda q: (abs(q - selected_layer_percent), q),
+            )
+            if (
+                resolved_percents != old_percents
+                or selected_layer_percent != old_selected
+                or injection_layer != default.injection_layer
+            ):
+                print(
+                    f"[pao.config] {preset}: snapped layers to oracle training "
+                    f"recipe (percents {old_percents} -> {resolved_percents}, "
+                    f"selected {old_selected} -> {selected_layer_percent}, "
+                    f"injection -> L{injection_layer})"
+                )
+        except Exception as exc:  # noqa: BLE001
+            # Network-free / offline path: fall back to whatever we had.
+            print(
+                f"[pao.config] Layer auto-resolve skipped ({type(exc).__name__}: {exc});"
+                " using historical defaults."
+            )
+            if injection_layer is None:
+                injection_layer = default.injection_layer
+
         return cls(
             model_name=model_name,
             verbalizer_lora_path=verbalizer,
             target_lora_template=target_template,
+            injection_layer=injection_layer,
+            layer_percents=layer_percents,
+            selected_layer_percent=selected_layer_percent,
             **overrides,
         )
 
