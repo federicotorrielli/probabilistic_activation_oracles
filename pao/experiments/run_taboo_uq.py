@@ -15,6 +15,7 @@ import hashlib
 import json
 import os
 import random
+from collections import Counter
 from dataclasses import asdict
 from datetime import datetime, timezone
 from pathlib import Path
@@ -74,7 +75,7 @@ import matplotlib.pyplot as plt
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "6"
+CODE_VERSION = "8"
 
 
 def temperature_tag(temp: float) -> str:
@@ -114,7 +115,11 @@ def setup_model(
     """
     device = torch.device(cfg.device if torch.cuda.is_available() else "cpu")
     tokenizer = load_tokenizer(cfg.model_name)
-    model = load_model(cfg.model_name, cfg.dtype)
+    model = load_model(
+        cfg.model_name,
+        cfg.dtype,
+        attn_implementation=cfg.attn_implementation,
+    )
     model.eval()
 
     # Add dummy adapter so PeftModel API is available
@@ -260,6 +265,7 @@ def config_hash(exp_cfg: ExperimentConfig) -> str:
     key = {
         "code_version": CODE_VERSION,
         "model_name": exp_cfg.model.model_name,
+        "attn_implementation": exp_cfg.model.attn_implementation,
         "verbalizer_lora_path": exp_cfg.model.verbalizer_lora_path,
         "target_lora_template": exp_cfg.model.target_lora_template,
         "injection_layer": exp_cfg.model.injection_layer,
@@ -271,6 +277,10 @@ def config_hash(exp_cfg: ExperimentConfig) -> str:
         "seed": exp_cfg.seed,
         "bootstrap_k": sampling.bootstrap_k,
         "bootstrap_temperatures": sampling.bootstrap_temperatures,
+        "direct_answer_temperature": sampling.direct_answer_temperature,
+        "direct_confidence_temperature": sampling.direct_confidence_temperature,
+        "direct_retry_on_parse_failure": sampling.direct_retry_on_parse_failure,
+        "direct_structured_fallback": sampling.direct_structured_fallback,
         "mcmc_temperatures": sampling.mcmc_temperatures,
         "mcmc_steps": sampling.mcmc_steps,
         "mcmc_block_num": sampling.mcmc_block_num,
@@ -460,13 +470,36 @@ def run_all_methods(
                         "extracted_word": lp_result.extracted_word,
                         "first_token_entropy": lp_result.first_token_entropy,
                         "first_token_max_prob": lp_result.first_token_max_prob,
+                        "per_token_entropies": lp_result.per_token_entropies,
+                        "mean_token_entropy": lp_result.mean_token_entropy,
+                        "negative_mean_token_entropy": (
+                            lp_result.negative_mean_token_entropy
+                        ),
+                        "mean_token_max_prob": lp_result.mean_token_max_prob,
                         "mean_log_prob": lp_result.mean_log_prob,
                         "min_log_prob": lp_result.min_log_prob,
                         "geometric_mean_prob": lp_result.geometric_mean_prob,
                         "word_prob_with_offset": lp_result.word_prob_with_offset,
                         "word_n_tokens_with_offset": lp_result.word_n_tokens_with_offset,
+                        "word_prob_with_offset_fallback_used": (
+                            lp_result.word_prob_with_offset_fallback_used
+                        ),
+                        "word_prob_with_offset_fallback_reason": (
+                            lp_result.word_prob_with_offset_fallback_reason
+                        ),
                         "word_prob_no_offset": lp_result.word_prob_no_offset,
                         "word_n_tokens_no_offset": lp_result.word_n_tokens_no_offset,
+                        "word_prob_no_offset_fallback_used": (
+                            lp_result.word_prob_no_offset_fallback_used
+                        ),
+                        "word_prob_no_offset_fallback_reason": (
+                            lp_result.word_prob_no_offset_fallback_reason
+                        ),
+                        "word_prob_no_offset_truncated": (
+                            lp_result.word_prob_no_offset_truncated
+                        ),
+                        "extracted_word_source": lp_result.extracted_word_source,
+                        "answer_vocab_size": lp_result.answer_vocab_size,
                     }
 
                     all_predictions["logprob_offset"].append(
@@ -507,6 +540,14 @@ def run_all_methods(
                         context=oracle_ids,
                         oracle_messages=oracle_messages,
                         max_new_tokens=sampling.max_new_tokens,
+                        answer_temperature=sampling.direct_answer_temperature,
+                        confidence_temperature=(
+                            sampling.direct_confidence_temperature
+                        ),
+                        retry_on_parse_failure=(
+                            sampling.direct_retry_on_parse_failure
+                        ),
+                        structured_fallback=sampling.direct_structured_fallback,
                     )
                     elicited_word = extract_predicted_word(
                         elicitation_result.answer_text, TABOO_WORDS
@@ -524,6 +565,49 @@ def run_all_methods(
                                 "extracted_word": elicited_word,
                                 "confidence_text": elicitation_result.confidence_text,
                                 "raw_confidence_value": elicitation_result.raw_confidence_value,
+                                "confidence_decode_method": (
+                                    elicitation_result.confidence_decode_method
+                                ),
+                                "freeform_confidence_text": (
+                                    elicitation_result.freeform_confidence_text
+                                ),
+                                "answer_temperature": (
+                                    elicitation_result.answer_temperature
+                                ),
+                                "confidence_temperature": (
+                                    elicitation_result.confidence_temperature
+                                ),
+                                "answer_do_sample": (
+                                    elicitation_result.answer_do_sample
+                                ),
+                                "confidence_do_sample": (
+                                    elicitation_result.confidence_do_sample
+                                ),
+                                "confidence_parse_failed": (
+                                    elicitation_result.confidence_parse_failed
+                                ),
+                                "confidence_retry_used": (
+                                    elicitation_result.confidence_retry_used
+                                ),
+                                "confidence_retry_text": (
+                                    elicitation_result.confidence_retry_text
+                                ),
+                                "confidence_structured_fallback_used": (
+                                    elicitation_result.confidence_structured_fallback_used
+                                ),
+                                "confidence_default_fallback_used": (
+                                    elicitation_result.confidence_default_fallback_used
+                                ),
+                                "structured_top_confidence_value": (
+                                    elicitation_result.structured_top_confidence_value
+                                ),
+                                "structured_top_probability": (
+                                    elicitation_result.structured_top_probability
+                                ),
+                                "structured_entropy": elicitation_result.structured_entropy,
+                                "structured_top_candidates": (
+                                    elicitation_result.structured_top_candidates
+                                ),
                             },
                         )
                     )
@@ -610,12 +694,13 @@ def run_all_methods(
                                 context_prompt=ctx_prompt,
                                 verbalizer_prompt=verbalizer_prompt,
                                 predicted_answer=mcmc_result.generated_text,
-                                confidence=1.0 - mcmc_result.acceptance_ratio,
+                                confidence=mcmc_result.acceptance_ratio,
                                 is_correct=mcmc_word == target_word,
                                 method=single_method,
                                 method_metadata={
                                     "extracted_word": mcmc_word,
                                     "acceptance_ratio": mcmc_result.acceptance_ratio,
+                                    "confidence_variant": "acceptance_ratio",
                                     "alpha": mcmc_result.alpha,
                                     "temperature": mcmc_result.temperature,
                                 },
@@ -731,6 +816,7 @@ def summarize_predictions(predictions: list[WordPrediction]) -> dict[str, object
     accuracy = sum(correctness) / max(len(correctness), 1)
     auroc_score = auroc(confidences, correctness)
     conf_correct, conf_wrong = confidence_separation(confidences, correctness)
+    metadata_summary = summarize_metadata(predictions)
     return {
         "accuracy": accuracy,
         "calibration": cal,
@@ -739,6 +825,52 @@ def summarize_predictions(predictions: list[WordPrediction]) -> dict[str, object
         "conf_given_correct": conf_correct,
         "conf_given_wrong": conf_wrong,
         "n_samples": len(predictions),
+        "metadata": metadata_summary,
+    }
+
+
+def summarize_metadata(predictions: list[WordPrediction]) -> dict[str, object]:
+    """Aggregate diagnostic metadata such as fallback rates."""
+    n = len(predictions)
+    flag_suffixes = (
+        "_fallback_used",
+        "_parse_failed",
+        "_retry_used",
+        "_truncated",
+    )
+    flag_keys = sorted(
+        {
+            key
+            for p in predictions
+            for key, value in p.method_metadata.items()
+            if isinstance(value, bool) and key.endswith(flag_suffixes)
+        }
+    )
+    flag_counts = {}
+    for key in flag_keys:
+        count = sum(bool(p.method_metadata.get(key, False)) for p in predictions)
+        flag_counts[key] = {
+            "count": count,
+            "rate": count / n if n else 0.0,
+        }
+
+    categorical_counts = {}
+    for key in (
+        "confidence_decode_method",
+        "confidence_variant",
+        "extracted_word_source",
+    ):
+        values = [
+            str(p.method_metadata[key])
+            for p in predictions
+            if key in p.method_metadata and p.method_metadata[key] is not None
+        ]
+        if values:
+            categorical_counts[key] = dict(Counter(values))
+
+    return {
+        "flag_counts": flag_counts,
+        "categorical_counts": categorical_counts,
     }
 
 
@@ -807,6 +939,7 @@ def evaluate_and_save(
         auroc_score = stats["auroc"]
         conf_correct = stats["conf_given_correct"]
         conf_wrong = stats["conf_given_wrong"]
+        metadata = stats["metadata"]
 
         print_calibration_summary(cal, method_name)
         print(f"  Accuracy:           {accuracy:.3f}")
@@ -814,6 +947,11 @@ def evaluate_and_save(
         print(f"  AUROC:              {auroc_score:.3f}")
         print(f"  Conf|correct:       {conf_correct:.3f}")
         print(f"  Conf|wrong:         {conf_wrong:.3f}")
+        flag_counts = metadata["flag_counts"]
+        if flag_counts:
+            print("  Metadata flags:")
+            for key, item in flag_counts.items():
+                print(f"    {key}: {item['count']} ({item['rate']:.2%})")
 
         summary[method_name] = {
             "accuracy": accuracy,
@@ -824,6 +962,7 @@ def evaluate_and_save(
             "conf_given_correct": conf_correct,
             "conf_given_wrong": conf_wrong,
             "n_samples": len(predictions),
+            "metadata": metadata,
         }
 
         save_reliability_diagram(
@@ -847,6 +986,7 @@ def evaluate_and_save(
             "auroc": auroc_score,
             "conf_given_correct": conf_correct,
             "conf_given_wrong": conf_wrong,
+            "metadata": metadata,
             "predictions": [asdict(p) for p in predictions],
         }
 
@@ -873,6 +1013,7 @@ def evaluate_and_save(
                 "conf_given_correct": stats["conf_given_correct"],
                 "conf_given_wrong": stats["conf_given_wrong"],
                 "n_samples": stats["n_samples"],
+                "metadata": stats["metadata"],
             }
             save_reliability_diagram(
                 cal,
@@ -897,6 +1038,7 @@ def evaluate_and_save(
                         "auroc": stats["auroc"],
                         "conf_given_correct": stats["conf_given_correct"],
                         "conf_given_wrong": stats["conf_given_wrong"],
+                        "metadata": stats["metadata"],
                         "predictions": [asdict(p) for p in subset_predictions],
                     },
                     f,
@@ -949,6 +1091,15 @@ if __name__ == "__main__":
         help="Override the preset's base model id (advanced; leaves verbalizer/target from preset)",
     )
     parser.add_argument(
+        "--attn-implementation",
+        default="auto",
+        help=(
+            "Transformers attention backend. auto uses the fastest known-working "
+            "backend per model family; examples: sdpa, flash_attention_2, "
+            "flash_attention_3, kernels-community/flash-attn2."
+        ),
+    )
+    parser.add_argument(
         "--max-prompts", type=int, default=None, help="Limit context prompts"
     )
     parser.add_argument(
@@ -964,6 +1115,28 @@ if __name__ == "__main__":
         nargs="+",
         default=None,
         help="Override the bootstrap temperature sweep",
+    )
+    parser.add_argument(
+        "--direct-answer-temp",
+        type=float,
+        default=0.0,
+        help="Temperature for direct-elicitation answer generation (0 = greedy)",
+    )
+    parser.add_argument(
+        "--direct-confidence-temp",
+        type=float,
+        default=0.0,
+        help="Temperature for direct-elicitation confidence generation (0 = greedy)",
+    )
+    parser.add_argument(
+        "--no-direct-retry",
+        action="store_true",
+        help="Disable the stricter confidence retry after an unparseable answer",
+    )
+    parser.add_argument(
+        "--no-direct-structured-fallback",
+        action="store_true",
+        help="Disable structured 0..100 scoring when confidence parsing fails",
     )
     parser.add_argument("--mcmc-steps", type=int, default=5)
     parser.add_argument(
@@ -1008,6 +1181,10 @@ if __name__ == "__main__":
 
     sampling_cfg = SamplingConfig(
         bootstrap_k=args.bootstrap_k,
+        direct_answer_temperature=args.direct_answer_temp,
+        direct_confidence_temperature=args.direct_confidence_temp,
+        direct_retry_on_parse_failure=not args.no_direct_retry,
+        direct_structured_fallback=not args.no_direct_structured_fallback,
         mcmc_steps=args.mcmc_steps,
         power_agreement_k=args.agreement_k,
     )
@@ -1021,6 +1198,7 @@ if __name__ == "__main__":
     model_cfg = ModelConfig.from_preset(args.preset)
     if args.model is not None:
         model_cfg.model_name = args.model
+    model_cfg.attn_implementation = args.attn_implementation
 
     output_dir = args.output_dir or f"results/{args.preset}/taboo_uq"
 

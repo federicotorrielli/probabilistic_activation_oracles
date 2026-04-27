@@ -80,22 +80,43 @@ def set_seed(seed: int) -> None:
 def load_model(
     model_name: str,
     dtype: torch.dtype,
+    attn_implementation: str = "auto",
     **model_kwargs,
 ) -> AutoModelForCausalLM:
     print("🧠 Loading model...")
 
-    # Gemma prefers eager attention; others use FA2
-    attn = "eager" if "gemma" in model_name.lower() else "flash_attention_2"
+    attn = resolve_attention_implementation(model_name, attn_implementation)
+    print(f"  attention: {attn}")
 
     kwargs: dict = {
         "device_map": "auto",
         "attn_implementation": attn,
-        "torch_dtype": dtype,
+        "dtype": dtype,
         **model_kwargs,
     }
 
     model = AutoModelForCausalLM.from_pretrained(model_name, **kwargs)
     return model
+
+
+def resolve_attention_implementation(model_name: str, requested: str = "auto") -> str:
+    """Resolve the attention backend to pass to Transformers.
+
+    ``sdpa`` is not an eager fallback: PyTorch dispatches it to fused GPU
+    scaled-dot-product attention kernels when supported. It is the fastest
+    known-working backend for Qwen3 under the current Transformers 5.6 stack,
+    where the explicit FA2 integration can crash with a missing attention-sink
+    tensor.
+    """
+    if requested != "auto":
+        return requested
+
+    model_name_lower = model_name.lower()
+    if "gemma" in model_name_lower:
+        return "eager"
+    if "qwen3" in model_name_lower:
+        return "sdpa"
+    return "flash_attention_2"
 
 
 def load_tokenizer(
@@ -471,6 +492,7 @@ __all__ = [
     "get_introspection_prefix",
     "get_text_config",
     "resolve_oracle_layers",
+    "resolve_attention_implementation",
     "load_lora_adapter",
     "load_model",
     "load_tokenizer",

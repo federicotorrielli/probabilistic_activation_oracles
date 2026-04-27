@@ -256,6 +256,25 @@ class SteeredAutoregressiveSampler:
         max_new_tokens: int = 20,
     ) -> tuple[list[int], list[float]]:
         """Greedy generation returning token_ids and per-token log-probs."""
+        full_seq, log_probs, _, _ = self.greedy_generate_with_token_stats(
+            context=context,
+            max_new_tokens=max_new_tokens,
+        )
+        return full_seq, log_probs
+
+    @torch.no_grad()
+    def greedy_generate_with_token_stats(
+        self,
+        context: list[int],
+        max_new_tokens: int = 20,
+    ) -> tuple[list[int], list[float], list[float], list[float]]:
+        """Greedy generation with generated-token log-probs and entropy stats.
+
+        Returns:
+            ``(full_seq, token_log_probs, token_entropies, token_max_probs)``.
+            Entropies and max probabilities are computed from the unscaled
+            next-token distribution at each generated step.
+        """
         input_ids = torch.tensor([context], dtype=torch.long, device=self.device)
         attention_mask = torch.ones_like(input_ids, dtype=torch.long)
 
@@ -276,19 +295,28 @@ class SteeredAutoregressiveSampler:
         num_generated = len(tokens)
 
         if num_generated == 0:
-            return context, []
+            return context, [], [], []
 
         unscaled_logits = torch.stack(output.logits, dim=0)
         idx = tokens.view(num_generated, 1, 1)
+        token_log_distributions = F.log_softmax(unscaled_logits.float(), dim=-1)
+        token_distributions = torch.exp(token_log_distributions)
 
         log_probs = (
-            torch.gather(F.log_softmax(unscaled_logits, dim=-1), -1, idx)
+            torch.gather(token_log_distributions, -1, idx)
             .view(-1)
             .tolist()
         )
+        entropies = (
+            -(token_distributions * token_log_distributions)
+            .sum(dim=-1)
+            .view(-1)
+            .tolist()
+        )
+        max_probs = token_distributions.max(dim=-1).values.view(-1).tolist()
 
         full_seq = output.sequences[0].tolist()
-        return full_seq, log_probs
+        return full_seq, log_probs, entropies, max_probs
 
 
 def naive_temp_steered(

@@ -15,7 +15,9 @@ Two confidence variants are reported:
 
 For single-token words, both variants collapse to a first-token probability.
 ``first_token_max_prob`` and sentence-level ``geometric_mean_prob`` are kept
-as diagnostics.
+as diagnostics. ``mean_token_entropy`` is the generated-step entropy diagnostic
+used by sampling-style confidence formulas; it is not forced into [0, 1] and is
+therefore reported as metadata rather than as a calibration confidence.
 """
 
 import math
@@ -42,10 +44,21 @@ class LogProbResult:
     sequence_log_prob: float
     first_token_entropy: float
     first_token_max_prob: float
+    per_token_entropies: list[float]
+    mean_token_entropy: float
+    negative_mean_token_entropy: float
+    mean_token_max_prob: float
     word_prob_with_offset: float  # joint prob using char-to-token span mapping
     word_n_tokens_with_offset: int  # number of tokens in mapped span
+    word_prob_with_offset_fallback_used: bool
+    word_prob_with_offset_fallback_reason: str | None
     word_prob_no_offset: float  # joint prob of first N tokens (offset-free)
     word_n_tokens_no_offset: int  # N used by the offset-free variant
+    word_prob_no_offset_fallback_used: bool
+    word_prob_no_offset_fallback_reason: str | None
+    word_prob_no_offset_truncated: bool
+    extracted_word_source: str
+    answer_vocab_size: int
     geometric_mean_prob: float  # exp(mean_log_prob), diagnostic only
 
 
@@ -155,15 +168,33 @@ def logprob_confidence(
         sampler, context
     )
 
-    full_seq, log_probs = sampler.greedy_generate(
-        context=context,
-        max_new_tokens=max_new_tokens,
+    answer_vocab_list = [w.lower() for w in answer_vocab if w]
+    answer_vocab_set = set(answer_vocab_list)
+
+    full_seq, log_probs, token_entropies, token_max_probs = (
+        sampler.greedy_generate_with_token_stats(
+            context=context,
+            max_new_tokens=max_new_tokens,
+        )
+    )
+
+    mean_token_entropy = (
+        sum(token_entropies) / len(token_entropies) if token_entropies else 0.0
+    )
+    mean_token_max_prob = (
+        sum(token_max_probs) / len(token_max_probs) if token_max_probs else 0.0
     )
 
     tokenizer = sampler.tokenizer
     generated_ids = full_seq[len(context) :]
     generated_text = str(_decode_to_str(tokenizer, generated_ids))
-    extracted_word = extract_predicted_word(generated_text, answer_vocab)
+    extracted_word = extract_predicted_word(generated_text, answer_vocab_list)
+    if extracted_word in answer_vocab_set:
+        extracted_word_source = "answer_vocab"
+    elif extracted_word:
+        extracted_word_source = "first_alpha_fallback"
+    else:
+        extracted_word_source = "empty"
 
     if len(log_probs) == 0:
         return LogProbResult(
@@ -176,10 +207,21 @@ def logprob_confidence(
             sequence_log_prob=float("-inf"),
             first_token_entropy=first_token_entropy,
             first_token_max_prob=first_token_max_prob,
+            per_token_entropies=[],
+            mean_token_entropy=0.0,
+            negative_mean_token_entropy=0.0,
+            mean_token_max_prob=0.0,
             word_prob_with_offset=0.0,
             word_n_tokens_with_offset=0,
+            word_prob_with_offset_fallback_used=True,
+            word_prob_with_offset_fallback_reason="empty_generation",
             word_prob_no_offset=0.0,
             word_n_tokens_no_offset=0,
+            word_prob_no_offset_fallback_used=True,
+            word_prob_no_offset_fallback_reason="empty_generation",
+            word_prob_no_offset_truncated=False,
+            extracted_word_source=extracted_word_source,
+            answer_vocab_size=len(answer_vocab_set),
             geometric_mean_prob=0.0,
         )
 
@@ -191,22 +233,37 @@ def logprob_confidence(
     # subword tokens where the word appears in the generated text.
     tok_start, tok_end = _find_word_token_span(extracted_word, generated_ids, tokenizer)
     word_n_tokens_with_offset = tok_end - tok_start
+    word_prob_with_offset_fallback_used = word_n_tokens_with_offset <= 0
+    word_prob_with_offset_fallback_reason = None
     if word_n_tokens_with_offset > 0:
         word_log_prob_with_offset = sum(log_probs[tok_start:tok_end])
         word_prob_with_offset = math.exp(word_log_prob_with_offset)
     else:
-        # Word not found — fall back to first-token max prob
+        # Word not found — fall back to first-token max prob and log it.
         word_prob_with_offset = first_token_max_prob
+        word_prob_with_offset_fallback_reason = (
+            "no_extracted_word"
+            if not extracted_word
+            else "extracted_word_not_found_in_generated_text"
+        )
 
     # Variant 2 (no offsets): joint probability of first N generated tokens,
-    # where N is inferred only from word tokenization length.
+    # where N is inferred only from predicted-word tokenization length. This
+    # uses the candidate answer vocabulary, not the ground-truth target word.
     word_n_tokens_no_offset = _word_token_count_no_offset(extracted_word, tokenizer)
+    word_prob_no_offset_fallback_used = word_n_tokens_no_offset <= 0
+    word_prob_no_offset_fallback_reason = None
+    word_prob_no_offset_truncated = False
     if word_n_tokens_no_offset > 0:
         prefix_end = min(word_n_tokens_no_offset, len(log_probs))
+        word_prob_no_offset_truncated = prefix_end < word_n_tokens_no_offset
         word_log_prob_no_offset = sum(log_probs[:prefix_end])
         word_prob_no_offset = math.exp(word_log_prob_no_offset)
     else:
         word_prob_no_offset = first_token_max_prob
+        word_prob_no_offset_fallback_reason = (
+            "no_extracted_word" if not extracted_word else "word_tokenization_empty"
+        )
 
     return LogProbResult(
         generated_text=generated_text,
@@ -218,9 +275,20 @@ def logprob_confidence(
         sequence_log_prob=seq_lp,
         first_token_entropy=first_token_entropy,
         first_token_max_prob=first_token_max_prob,
+        per_token_entropies=token_entropies,
+        mean_token_entropy=mean_token_entropy,
+        negative_mean_token_entropy=-mean_token_entropy,
+        mean_token_max_prob=mean_token_max_prob,
         word_prob_with_offset=word_prob_with_offset,
         word_n_tokens_with_offset=word_n_tokens_with_offset,
+        word_prob_with_offset_fallback_used=word_prob_with_offset_fallback_used,
+        word_prob_with_offset_fallback_reason=word_prob_with_offset_fallback_reason,
         word_prob_no_offset=word_prob_no_offset,
         word_n_tokens_no_offset=word_n_tokens_no_offset,
+        word_prob_no_offset_fallback_used=word_prob_no_offset_fallback_used,
+        word_prob_no_offset_fallback_reason=word_prob_no_offset_fallback_reason,
+        word_prob_no_offset_truncated=word_prob_no_offset_truncated,
+        extracted_word_source=extracted_word_source,
+        answer_vocab_size=len(answer_vocab_set),
         geometric_mean_prob=math.exp(mean_lp),
     )

@@ -26,21 +26,6 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-32B",
         "adamkarvonen/Qwen3-32B-taboo-{word}",
     ),
-    "gemma-4-e2b": (
-        "google/gemma-4-E2B-it",
-        "EvilScript/activation-oracle-gemma-4-E2B-it",
-        "EvilScript/taboo-{word}-gemma-4-E2B-it",
-    ),
-    "gemma-4-e4b": (
-        "google/gemma-4-E4B-it",
-        "EvilScript/activation-oracle-gemma-4-E4B-it",
-        "EvilScript/taboo-{word}-gemma-4-E4B-it",
-    ),
-    "gemma-4-26b-a4b": (
-        "google/gemma-4-26B-A4B-it",
-        "EvilScript/activation-oracle-gemma-4-26B-A4B-it",
-        "EvilScript/taboo-{word}-gemma-4-26B-A4B-it",
-    ),
     "gemma-4-31b": (
         "google/gemma-4-31B-it",
         "EvilScript/activation-oracle-gemma-4-31B-it",
@@ -95,6 +80,7 @@ class ModelConfig:
     model_name: str = MODEL_PRESETS["qwen3-8b"][0]
     dtype: torch.dtype = torch.bfloat16
     device: str = "cuda"
+    attn_implementation: str = "auto"
 
     # Oracle (verbalizer) LoRA
     verbalizer_lora_path: str = MODEL_PRESETS["qwen3-8b"][1]
@@ -203,8 +189,14 @@ class SamplingConfig:
     # Temperature bootstrap
     bootstrap_k: int = 20
     bootstrap_temperatures: list[float] = field(
-        default_factory=lambda: [0.3, 0.5, 0.7, 1.0]
+        default_factory=lambda: [0.3, 0.5, 0.7, 1.0, 1.3, 1.5]
     )
+
+    # Direct confidence elicitation
+    direct_answer_temperature: float = 0.0
+    direct_confidence_temperature: float = 0.0
+    direct_retry_on_parse_failure: bool = True
+    direct_structured_fallback: bool = True
 
     # MCMC power sampling
     mcmc_temperatures: list[float] = field(default_factory=lambda: [0.5, 0.25, 0.125])

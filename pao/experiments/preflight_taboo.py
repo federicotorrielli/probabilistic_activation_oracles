@@ -962,6 +962,15 @@ def main() -> int:
         help="Override the preset verbalizer LoRA",
     )
     parser.add_argument(
+        "--attn-implementation",
+        default="auto",
+        help=(
+            "Transformers attention backend. auto uses the fastest known-working "
+            "backend per model family; examples: sdpa, flash_attention_2, "
+            "flash_attention_3, kernels-community/flash-attn2."
+        ),
+    )
+    parser.add_argument(
         "--json-out",
         type=Path,
         default=None,
@@ -977,6 +986,7 @@ def main() -> int:
     cfg = ModelConfig.from_preset(args.preset)
     if args.verbalizer_lora_path is not None:
         cfg.verbalizer_lora_path = args.verbalizer_lora_path
+    cfg.attn_implementation = args.attn_implementation
 
     words = _dedupe_words(args.words or _default_words())
     for word in words:
