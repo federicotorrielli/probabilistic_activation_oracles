@@ -6,12 +6,6 @@ Baker et al. 2025 ("Are Language Models Aware of the Road Not Taken?", arXiv:251
 
 We include six UQ methods (1 log-prob, 2 temperature bootstrap, 3 direct elicitation, 4 single MCMC, 5 MCMC agreement, 6 steering sensitivity). Methods 2, 4, and 5 are run across a small grid of temperatures / powers so we can characterize how calibration depends on the proposal sharpness.
 
-## Background: what is an LLM and how does it work inside?
-
-A large language model (LLM) is a program that predicts text. You give it a sentence and it continues it, word by word. Internally, the model processes text through many layers of computation. At each layer, every word in the input gets represented as a long list of numbers called an "activation" (think of it as the model's internal thought about that word at that stage of processing). These activations are normally hidden: you only see the final output text, not the internal numbers.
-
-Technically, an LLM is a neural network with L transformer layers. Given an input sequence of tokens $x_1, \ldots, x_n$, each layer $l$ produces a hidden state $h_l(x_i) \in \mathbb{R}^d$ for each token $i$. These hidden states (activations) are the intermediate representations that flow through the network. The final layer's output is projected to a vocabulary-sized logit vector, then passed through a softmax to get a probability distribution over the next token.
-
 ## Background: what is an activation oracle?
 
 An activation oracle is a second LLM that has been trained to read the internal activations of a first LLM and answer questions about them in plain language.
