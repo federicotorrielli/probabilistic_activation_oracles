@@ -207,7 +207,7 @@ def collect_activations_multiple_layers(
         assert max_offset < 0, "max_offset must be less than 0"
     else:
         assert max_offset is None, (
-            "max_offset must be provided if min_offset is not provided"
+            "max_offset must not be provided if min_offset is not provided"
         )
 
     activations_BLD_by_layer = {}

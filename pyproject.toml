@@ -11,9 +11,11 @@ dependencies = [
     "peft",
     "torch==2.11.0",
     "accelerate==1.13.0",
-    "transformers==5.6.2",
+    "transformers==5.7.0",
     "einops==0.8.2",
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl",
+    "flash-linear-attention",
+    "causal-conv1d",
     "nnsight>=0.6.3",
 ]
 
@@ -23,3 +25,19 @@ build-backend = "setuptools.build_meta"
 
 [tool.setuptools.packages.find]
 include = ["pao", "pao.*"]
+
+[tool.uv]
+no-build-isolation-package = ["causal-conv1d", "flash-linear-attention"]
+
+[tool.uv.extra-build-dependencies]
+flash-linear-attention = ["torch"]
+flash-attn = ["torch"]
+causal-conv1d = ["torch"]
+
+[[tool.uv.index]]
+name = "pytorch-cu130"
+url = "https://download.pytorch.org/whl/cu130"
+explicit = true
+
+[tool.uv.sources]
+torch = { index = "pytorch-cu130" }

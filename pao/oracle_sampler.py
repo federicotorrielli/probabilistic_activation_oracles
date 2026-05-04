@@ -308,8 +308,7 @@ class SteeredAutoregressiveSampler:
             .tolist()
         )
         entropies = (
-            -(token_distributions * token_log_distributions)
-            .sum(dim=-1)
+            (-(token_distributions * token_log_distributions).sum(dim=-1))
             .view(-1)
             .tolist()
         )
