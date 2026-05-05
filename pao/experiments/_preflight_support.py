@@ -57,6 +57,14 @@ TARGET_SUFFIXES = (
     "gate_proj",
     "up_proj",
     "down_proj",
+    # Qwen3_5 GatedDeltaNet (linear_attention layers): four separate input
+    # projections plus an output projection. The verbalizer/target LoRAs
+    # need to cover these on linear-attn layers or the SSM signal is unsteered.
+    "in_proj_qkv",
+    "in_proj_z",
+    "in_proj_b",
+    "in_proj_a",
+    "out_proj",
 )
 
 
@@ -363,6 +371,14 @@ def check_oracle_accuracy(
 
 def load_expected_module_names(model_name: str) -> list[str]:
     config = AutoConfig.from_pretrained(model_name)
+    # Mirror AutoModelForCausalLM.from_pretrained's composite-config unwrap
+    # (transformers/models/auto/auto_factory.py:385): for multimodal configs
+    # like Qwen3_5/Gemma 4, the *ForCausalLM init reads vocab_size/hidden_size
+    # from the inner text config. from_config skips that unwrap and crashes.
+    if hasattr(config, "get_text_config"):
+        text_config = config.get_text_config()
+        if text_config is not config:
+            config = text_config
     with init_empty_weights():
         model = AutoModelForCausalLM.from_config(config)
 

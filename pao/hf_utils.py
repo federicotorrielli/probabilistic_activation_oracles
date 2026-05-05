@@ -12,7 +12,6 @@ import torch
 from peft import PeftModel
 from transformers import AutoModelForCausalLM, AutoTokenizer
 
-
 # ---------------------------------------------------------------------------
 # Introspection prompt layout
 # ---------------------------------------------------------------------------
@@ -115,7 +114,7 @@ def resolve_attention_implementation(model_name: str, requested: str = "auto") -
     if "gemma" in model_name_lower:
         return "eager"
     if "qwen3" in model_name_lower:
-        return "sdpa"
+        return "flash_attention_4"
     return "flash_attention_2"
 
 

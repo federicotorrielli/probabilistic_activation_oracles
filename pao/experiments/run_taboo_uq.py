@@ -122,8 +122,9 @@ def setup_model(
     )
     model.eval()
 
-    # Add dummy adapter so PeftModel API is available
-    dummy_config = LoraConfig()
+    # Add dummy adapter so PeftModel API is available. target_modules is
+    # required for architectures PEFT can't auto-map (e.g. Qwen3.6).
+    dummy_config = LoraConfig(target_modules=["q_proj"])
     model.add_adapter(dummy_config, adapter_name="default")
 
     verbalizer_adapter: Optional[str] = None
@@ -541,12 +542,8 @@ def run_all_methods(
                         oracle_messages=oracle_messages,
                         max_new_tokens=sampling.max_new_tokens,
                         answer_temperature=sampling.direct_answer_temperature,
-                        confidence_temperature=(
-                            sampling.direct_confidence_temperature
-                        ),
-                        retry_on_parse_failure=(
-                            sampling.direct_retry_on_parse_failure
-                        ),
+                        confidence_temperature=(sampling.direct_confidence_temperature),
+                        retry_on_parse_failure=(sampling.direct_retry_on_parse_failure),
                         structured_fallback=sampling.direct_structured_fallback,
                     )
                     elicited_word = extract_predicted_word(

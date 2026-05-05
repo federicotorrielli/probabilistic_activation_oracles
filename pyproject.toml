@@ -13,10 +13,15 @@ dependencies = [
     "accelerate==1.13.0",
     "transformers==5.7.0",
     "einops==0.8.2",
+    "nnsight>=0.6.3",
+]
+
+[project.optional-dependencies]
+flash-attn = [
     "flash-attn @ https://github.com/mjun0812/flash-attention-prebuild-wheels/releases/download/v0.9.4/flash_attn-2.8.3+cu130torch2.11-cp313-cp313-linux_x86_64.whl",
+    "flash-attn-4",
     "flash-linear-attention",
     "causal-conv1d",
-    "nnsight>=0.6.3",
 ]
 
 [build-system]
@@ -27,11 +32,16 @@ build-backend = "setuptools.build_meta"
 include = ["pao", "pao.*"]
 
 [tool.uv]
-no-build-isolation-package = ["causal-conv1d", "flash-linear-attention"]
+no-build-isolation-package = [
+    "causal-conv1d",
+    "flash-linear-attention",
+    "flash-attn-4",
+]
+prerelease = "allow"
 
 [tool.uv.extra-build-dependencies]
 flash-linear-attention = ["torch"]
-flash-attn = ["torch"]
+flash-attn-4 = ["torch"]
 causal-conv1d = ["torch"]
 
 [[tool.uv.index]]
