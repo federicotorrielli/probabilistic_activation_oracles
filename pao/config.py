@@ -31,7 +31,7 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
         "EvilScript/activation-oracle-gemma-4-31B-it",
         "EvilScript/taboo-{word}-gemma-4-31B-it",
     ),
-    "Qwen3.6-27B": (
+    "qwen3.6-27b": (
         "Qwen/Qwen3.6-27B",
         "EvilScript/activation-oracle-qwen3.6-27B",
         "EvilScript/Qwen3_6-27B-taboo-{word}",
