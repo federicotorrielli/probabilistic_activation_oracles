@@ -101,11 +101,10 @@ def load_model(
 def resolve_attention_implementation(model_name: str, requested: str = "auto") -> str:
     """Resolve the attention backend to pass to Transformers.
 
-    ``sdpa`` is not an eager fallback: PyTorch dispatches it to fused GPU
-    scaled-dot-product attention kernels when supported. It is the fastest
-    known-working backend for Qwen3 under the current Transformers 5.6 stack,
-    where the explicit FA2 integration can crash with a missing attention-sink
-    tensor.
+    Matches what `nl_probes/utils/common.py` uses at training time so the
+    verbalizer LoRA reads activations under the same numerics it was trained
+    on. Qwen3.6's `Qwen3_5GatedDeltaNet` linear-attention block is sensitive
+    to kernel differences, so we mirror the trainer's choice exactly.
     """
     if requested != "auto":
         return requested
@@ -113,8 +112,6 @@ def resolve_attention_implementation(model_name: str, requested: str = "auto") -
     model_name_lower = model_name.lower()
     if "gemma" in model_name_lower:
         return "eager"
-    if "qwen3" in model_name_lower:
-        return "flash_attention_4"
     return "flash_attention_2"
 
 
@@ -274,14 +271,17 @@ def resolve_oracle_layers(
 
     Mirrors the rule used by the AO trainer in `nl_probes/gemma4_sft.py`:
 
-    * For models exposing `layer_types` with at least one `"full_attention"`
-      entry (Gemma 4's mixed sliding/full attention stack), each requested
-      percent is snapped to the nearest full-attention layer, and the integer
-      percent that maps to that layer via `int(num_layers * p / 100)` is
-      returned. The injection layer is the first full-attention layer.
+    * For Gemma 4's mixed sliding/full attention stack (i.e. `layer_types`
+      contains both `"sliding_attention"` and `"full_attention"`), each
+      requested percent is snapped to the nearest full-attention layer, and
+      the integer percent that maps to that layer via `int(num_layers * p /
+      100)` is returned. The injection layer is the first full-attention
+      layer.
     * For every other architecture (Qwen, Llama, Gemma 2, Gemma 3 text-only,
-      Mistral, ...) the percents pass through unchanged and the injection
-      layer defaults to 1, matching the historical AO recipe.
+      Mistral, Qwen 3.6's linear/full hybrid, ...) the percents pass through
+      unchanged and the injection layer defaults to 1, matching the AO
+      paper's standard recipe (Appendix A.5: layer 1 uniformly across every
+      released oracle, no full-attention snapping).
 
     This is the single rule shared between training and inference: as long as
     the trainer used the same rule, pao reads from the layer the oracle was
@@ -291,11 +291,14 @@ def resolve_oracle_layers(
         layer_percents = [25, 50, 75]
 
     layer_types = getattr(text_cfg, "layer_types", None)
-    full = (
-        [i for i, t in enumerate(layer_types) if t == "full_attention"]
-        if layer_types
-        else []
-    )
+    # Snapping is Gemma-4 specific: only fire when sliding+full attention is
+    # the reason for the mixed-types pattern. Other hybrid stacks (e.g. Qwen
+    # 3.6's linear+full) use the standard recipe — their trainers snap
+    # nothing.
+    if not layer_types or "sliding_attention" not in layer_types:
+        return 1, list(layer_percents)
+
+    full = [i for i, t in enumerate(layer_types) if t == "full_attention"]
 
     # No mixed attention pattern -> historical AO defaults apply.
     if not full or len(full) == len(layer_types):

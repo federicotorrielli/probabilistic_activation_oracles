@@ -75,7 +75,7 @@ import matplotlib.pyplot as plt
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "8"
+CODE_VERSION = "10"
 
 
 def temperature_tag(temp: float) -> str:
