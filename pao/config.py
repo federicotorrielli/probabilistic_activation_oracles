@@ -38,6 +38,22 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
     ),
 }
 
+# Per-preset readout layer (as a percent of the stack). The verbalizer is
+# trained on activations from layer_percents = [25, 50, 75] but only one of
+# those is read at inference time. The "right" percent is empirically
+# determined by sweeping: deeper stacks and hybrid-attention models put the
+# secret-word-readable signal later than mid-stack. See
+# findings/qwen3.6-27b_2026-05-11.md for the 27B sweep (lp=75 reaches 40.6%
+# mean across 20 words; lp=50 collapses to 6.25%; lp=25 is 0% across the
+# board). Keys must match MODEL_PRESETS exactly so a missing entry fails
+# loudly when adding a new preset.
+PRESET_SELECTED_LAYER_PERCENT: dict[str, int] = {
+    "qwen3-8b": 50,
+    "qwen3-32b": 50,
+    "gemma-4-31b": 50,
+    "qwen3.6-27b": 75,
+}
+
 # AO_ROOT is used purely as a dataset path (datasets/taboo/...).
 PROJECT_ROOT = Path(__file__).resolve().parent.parent
 AO_ROOT = PROJECT_ROOT / "activation_oracles"
@@ -132,7 +148,7 @@ class ModelConfig:
         )
         layer_percents = overrides.pop("layer_percents", default.layer_percents)
         selected_layer_percent = overrides.pop(
-            "selected_layer_percent", default.selected_layer_percent
+            "selected_layer_percent", PRESET_SELECTED_LAYER_PERCENT[preset]
         )
         injection_layer = overrides.pop("injection_layer", None)
 
