@@ -61,7 +61,10 @@ from pao.hf_utils import (
     load_tokenizer,
     set_seed,
 )
-from pao.methods.direct_elicitation import direct_elicitation
+from pao.methods.direct_elicitation import (
+    direct_elicitation,
+    score_linguistic_confidence,
+)
 from pao.methods.logprob_baseline import logprob_confidence
 from pao.methods.mcmc_oracle import mcmc_agreement, mcmc_oracle_sample
 from pao.methods.steering_sensitivity import steering_sensitivity_confidence
@@ -75,7 +78,7 @@ import matplotlib.pyplot as plt
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "10"
+CODE_VERSION = "11"
 
 
 def temperature_tag(temp: float) -> str:
@@ -90,6 +93,14 @@ def get_method_names(sampling: SamplingConfig) -> list[str]:
         "logprob_no_offset",
         "direct",
     ]
+    if sampling.direct_linguistic_enabled:
+        method_names.extend(
+            [
+                "direct_linguistic_expected",
+                "direct_linguistic_p_very_high",
+                "direct_linguistic_p_high_plus",
+            ]
+        )
     method_names.extend(
         f"bootstrap_t{temperature_tag(temp)}"
         for temp in sampling.bootstrap_temperatures
@@ -282,6 +293,7 @@ def config_hash(exp_cfg: ExperimentConfig) -> str:
         "direct_confidence_temperature": sampling.direct_confidence_temperature,
         "direct_retry_on_parse_failure": sampling.direct_retry_on_parse_failure,
         "direct_structured_fallback": sampling.direct_structured_fallback,
+        "direct_linguistic_enabled": sampling.direct_linguistic_enabled,
         "mcmc_temperatures": sampling.mcmc_temperatures,
         "mcmc_steps": sampling.mcmc_steps,
         "mcmc_block_num": sampling.mcmc_block_num,
@@ -608,6 +620,61 @@ def run_all_methods(
                             },
                         )
                     )
+
+                    # --- Method 3b: Verbalized-linguistic confidence ---
+                    # Reuses the answer from `direct_elicitation` so the
+                    # answer turn isn't repeated. Emits three readouts from
+                    # the same 5-label distribution. See
+                    # findings/direct_elicitation_variants_2026-05-11.md.
+                    if sampling.direct_linguistic_enabled:
+                        ling_result = score_linguistic_confidence(
+                            sampler=sampler,
+                            oracle_messages=oracle_messages,
+                            answer_text=elicitation_result.answer_text,
+                        )
+                        ling_metadata = {
+                            "extracted_word": elicited_word,
+                            "labels": ling_result.labels,
+                            "label_log_scores": ling_result.label_log_scores,
+                            "label_probs": ling_result.label_probs,
+                            "top_label": ling_result.top_label,
+                            "top_label_idx": ling_result.top_label_idx,
+                            "expected_value": ling_result.expected_value,
+                            "p_very_high": ling_result.p_very_high,
+                            "p_high_plus": ling_result.p_high_plus,
+                            "prompt": ling_result.prompt,
+                        }
+                        for ling_method, ling_conf in (
+                            (
+                                "direct_linguistic_expected",
+                                ling_result.expected_value,
+                            ),
+                            (
+                                "direct_linguistic_p_very_high",
+                                ling_result.p_very_high,
+                            ),
+                            (
+                                "direct_linguistic_p_high_plus",
+                                ling_result.p_high_plus,
+                            ),
+                        ):
+                            all_predictions[ling_method].append(
+                                WordPrediction(
+                                    target_word=target_word,
+                                    context_prompt=ctx_prompt,
+                                    verbalizer_prompt=verbalizer_prompt,
+                                    predicted_answer=elicitation_result.answer_text,
+                                    confidence=ling_conf,
+                                    is_correct=elicited_word == target_word,
+                                    method=ling_method,
+                                    method_metadata={
+                                        **ling_metadata,
+                                        "confidence_variant": ling_method.replace(
+                                            "direct_linguistic_", ""
+                                        ),
+                                    },
+                                )
+                            )
 
                     # --- Method 2: Temperature bootstrap ---
                     for boot_temp in sampling.bootstrap_temperatures:

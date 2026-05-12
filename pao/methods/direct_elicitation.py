@@ -18,6 +18,45 @@ import torch.nn.functional as F
 from pao.hf_utils import get_hf_activation_steering_hook
 from pao.oracle_sampler import SteeredAutoregressiveSampler
 
+# Verbalized-linguistic readout. Scoring these five labels under the steered
+# hook ranks correct vs. wrong answers far more cleanly than free-form numeric
+# elicitation (which saturates at ~100% regardless of correctness). See
+# findings/direct_elicitation_variants_2026-05-11.md for the mini-study.
+LINGUISTIC_LABELS: list[str] = ["very low", "low", "medium", "high", "very high"]
+LINGUISTIC_VALUES: list[float] = [0.1, 0.3, 0.5, 0.7, 0.9]
+LINGUISTIC_PROMPT: str = (
+    "How confident are you in your answer? Reply with exactly one of these "
+    "options and nothing else: very low, low, medium, high, very high."
+)
+
+
+@dataclass
+class LinguisticConfidenceResult:
+    """Verbalized linguistic confidence via constrained log-prob scoring.
+
+    The five labels are scored as one-token continuations after a turn-2
+    user prompt. Multiple readouts are returned so downstream analysis
+    can pick the most useful one without re-running the scoring pass:
+
+    - ``expected_value``: weighted by ``LINGUISTIC_VALUES``. Preserves
+      rank but compresses everything to a narrow band because the top
+      label is almost always "very high".
+    - ``p_very_high``: P(top label). The strongest discriminator on
+      qwen3-8b in the mini-study (AUROC 0.957, gap 0.077).
+    - ``p_high_plus``: P(high) + P(very_high). Mirrors how a human would
+      collapse the upper half of the scale.
+    """
+
+    labels: list[str]
+    label_log_scores: list[float]
+    label_probs: list[float]
+    top_label: str
+    top_label_idx: int
+    expected_value: float  # in [0, 1]
+    p_very_high: float  # in [0, 1]
+    p_high_plus: float  # in [0, 1]
+    prompt: str
+
 
 @dataclass
 class ElicitationResult:
@@ -116,7 +155,9 @@ def _score_continuations(
                 input_rows.append(seq + [pad_id] * pad_len)
                 mask_rows.append([1] * len(seq) + [0] * pad_len)
 
-            input_ids = torch.tensor(input_rows, dtype=torch.long, device=sampler.device)
+            input_ids = torch.tensor(
+                input_rows, dtype=torch.long, device=sampler.device
+            )
             attention_mask = torch.tensor(
                 mask_rows, dtype=torch.long, device=sampler.device
             )
@@ -222,9 +263,7 @@ def _apply_chat_template(tokenizer, messages: list[dict[str, str]]) -> list[int]
         padding=False,
         enable_thinking=False,
     )
-    if not isinstance(context, list) or (
-        context and not isinstance(context[0], int)
-    ):
+    if not isinstance(context, list) or (context and not isinstance(context[0], int)):
         raise TypeError("Expected list of token ids from tokenizer.apply_chat_template")
     return context
 
@@ -382,4 +421,59 @@ def direct_elicitation(
         structured_top_probability=structured_top_probability,
         structured_entropy=structured_entropy,
         structured_top_candidates=structured_top_candidates,
+    )
+
+
+@torch.no_grad()
+def score_linguistic_confidence(
+    sampler: SteeredAutoregressiveSampler,
+    oracle_messages: list[dict[str, str]],
+    answer_text: str,
+    prompt: str = LINGUISTIC_PROMPT,
+    batch_size: int = 8,
+) -> LinguisticConfidenceResult:
+    """Score the five verbalized confidence labels under the steered hook.
+
+    Designed to be called after ``direct_elicitation()`` with the answer
+    it produced, so the answer turn is not repeated.
+    """
+    turn2_messages = oracle_messages + [
+        {"role": "assistant", "content": answer_text},
+        {"role": "user", "content": prompt},
+    ]
+    turn2_context = _apply_chat_template(sampler.tokenizer, turn2_messages)
+
+    label_ids: list[list[int]] = []
+    for label in LINGUISTIC_LABELS:
+        ids = sampler.tokenizer.encode(label, add_special_tokens=False)
+        if len(ids) == 0:
+            ids = sampler.tokenizer.encode(" " + label, add_special_tokens=False)
+        if len(ids) == 0:
+            raise ValueError(f"Tokenizer returned empty ids for label {label!r}")
+        label_ids.append(ids)
+
+    scores = _score_continuations(
+        sampler=sampler,
+        context=turn2_context,
+        continuations=label_ids,
+        batch_size=batch_size,
+    )
+    log_t = torch.tensor(scores, dtype=torch.float32)
+    probs_t = torch.softmax(log_t, dim=0)
+    probs = [float(p.item()) for p in probs_t]
+    expected = float(sum(p * v for p, v in zip(probs, LINGUISTIC_VALUES)))
+    top_idx = int(torch.argmax(probs_t).item())
+    p_very_high = probs[-1]
+    p_high_plus = probs[-1] + probs[-2]
+
+    return LinguisticConfidenceResult(
+        labels=list(LINGUISTIC_LABELS),
+        label_log_scores=[float(s) for s in scores],
+        label_probs=probs,
+        top_label=LINGUISTIC_LABELS[top_idx],
+        top_label_idx=top_idx,
+        expected_value=expected,
+        p_very_high=p_very_high,
+        p_high_plus=p_high_plus,
+        prompt=prompt,
     )

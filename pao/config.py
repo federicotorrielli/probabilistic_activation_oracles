@@ -218,6 +218,12 @@ class SamplingConfig:
     direct_confidence_temperature: float = 0.0
     direct_retry_on_parse_failure: bool = True
     direct_structured_fallback: bool = True
+    # When True, runs a verbalized-linguistic confidence elicitation that
+    # scores five labels (very low / low / medium / high / very high) via
+    # constrained logits and emits three readouts (expected value,
+    # P(very_high), P(high)+P(very_high)). See
+    # findings/direct_elicitation_variants_2026-05-11.md for the rationale.
+    direct_linguistic_enabled: bool = True
 
     # MCMC power sampling
     mcmc_temperatures: list[float] = field(default_factory=lambda: [0.5, 0.25, 0.125])
