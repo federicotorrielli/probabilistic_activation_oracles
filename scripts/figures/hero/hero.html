@@ -1,0 +1,560 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<title>Hero figure</title>
+<style>
+:root {
+  --ink: #0c0d10;
+  --slate: #2c3038;
+  --muted: #6b7280;
+  --hair: #e2dfd6;
+  --paper: #fbfaf3;
+  --paper-2: #f3eedf;
+  --indigo: #4f46e5;
+  --indigo-soft: #eef0fc;
+  --amber: #d97706;
+  --amber-soft: #fff4e0;
+  --emerald: #16a34a;
+  --rose: #dc2626;
+  --grad-a: #4338ca;
+  --grad-b: #c2410c;
+}
+@font-face {
+  font-family: "InterVariable";
+  src: local("Inter"), local("Inter Variable"), local("InterVariable");
+}
+* { box-sizing: border-box; -webkit-font-smoothing: antialiased; }
+html, body {
+  margin: 0; padding: 0; background: var(--paper);
+  font-family: "Inter", "InterVariable", "SF Pro Display",
+               "Helvetica Neue", Helvetica, system-ui, sans-serif;
+  color: var(--ink);
+  font-feature-settings: "ss01", "cv11", "tnum";
+}
+.figure {
+  width: 1450px;
+  padding: 32px 44px 28px 44px;
+  background: var(--paper);
+}
+
+/* ===================== TOP PANEL ===================== */
+.top {
+  display: grid;
+  grid-template-columns: 1.05fr 1.5fr 1.1fr;
+  gap: 26px;
+  align-items: stretch;
+  margin-bottom: 18px;
+}
+.kicker {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.18em;
+  text-transform: uppercase;
+  color: var(--muted);
+  margin-bottom: 8px;
+}
+.card {
+  position: relative;
+  background: white;
+  border: 1px solid var(--hair);
+  border-radius: 16px;
+  padding: 18px 22px 20px 22px;
+  box-shadow: 0 1px 0 rgba(12,13,16,0.02), 0 14px 32px -22px rgba(12,13,16,0.18);
+}
+.card.target  { background: linear-gradient(180deg, #f5f6ff 0%, #ffffff 90%); border-color: #d8dcf4; }
+.card.oracle  { background: linear-gradient(180deg, #fff6e8 0%, #ffffff 90%); border-color: #f0d8a8; }
+.card h2 {
+  font-size: 26px; font-weight: 700; margin: 6px 0 4px 0;
+  letter-spacing: -0.01em;
+}
+.card .sub {
+  font-size: 13.5px; color: var(--slate); margin-bottom: 14px;
+  line-height: 1.4;
+}
+.card.target h2  { color: var(--indigo); }
+.card.oracle h2 { color: var(--amber); }
+
+.stack {
+  display: flex; flex-direction: column; gap: 4px; margin-top: 6px;
+}
+.layer {
+  height: 8px; border-radius: 4px;
+  background: linear-gradient(90deg, #c7cbf0 0%, #aab1ea 50%, #c7cbf0 100%);
+  opacity: 0.65;
+}
+.card.oracle .layer {
+  background: linear-gradient(90deg, #f5d8aa 0%, #efbe72 50%, #f5d8aa 100%);
+}
+.layer.hl {
+  background: linear-gradient(90deg, var(--grad-a) 0%, #6d28d9 100%);
+  opacity: 1; height: 11px;
+  box-shadow: 0 0 0 2px rgba(79,70,229,0.18);
+}
+.card.oracle .layer.hl {
+  background: linear-gradient(90deg, #c2410c 0%, #ea580c 100%);
+  box-shadow: 0 0 0 2px rgba(217,119,6,0.20);
+}
+.label-row {
+  display: flex; justify-content: space-between; align-items: center;
+  margin-top: 12px; font-size: 12.5px; color: var(--muted);
+}
+.label-row .chip {
+  display: inline-block; padding: 3px 10px; border-radius: 999px;
+  background: rgba(79,70,229,0.10); color: var(--indigo);
+  font-weight: 600; font-size: 11.5px;
+  letter-spacing: 0.02em;
+}
+.card.oracle .chip {
+  background: rgba(217,119,6,0.13); color: var(--amber);
+}
+
+.mid {
+  display: flex; flex-direction: column;
+  justify-content: center; align-items: center;
+  padding: 12px 8px;
+  position: relative;
+}
+.mid .h-label {
+  font-size: 13.5px; font-weight: 600; letter-spacing: 0.02em;
+  color: var(--ink); margin-bottom: 10px;
+}
+.mid .h-label .em { font-style: italic; color: var(--muted); font-weight: 500; }
+.ribbon {
+  height: 96px; width: 100%; position: relative;
+}
+.ribbon svg { display: block; width: 100%; height: 100%; }
+.mid .h-sub {
+  font-size: 11.5px; color: var(--muted); margin-top: 10px;
+  letter-spacing: 0.02em;
+}
+
+.answer {
+  display: flex; flex-direction: column; gap: 10px; margin-top: 14px;
+}
+.answer .speech {
+  display: inline-flex; align-items: center; gap: 14px;
+  padding: 14px 18px;
+  border: 1.5px solid var(--ink);
+  border-radius: 14px;
+  background: white;
+  position: relative;
+}
+.answer .speech::before {
+  content: "";
+  position: absolute;
+  left: -10px; top: 50%;
+  width: 18px; height: 18px;
+  background: white;
+  border-left: 1.5px solid var(--ink);
+  border-bottom: 1.5px solid var(--ink);
+  transform: translateY(-50%) rotate(45deg);
+}
+.answer .speech .word {
+  font-family: "Fraunces", "Charter", "Georgia", serif;
+  font-size: 36px; font-weight: 700;
+  line-height: 1;
+  letter-spacing: -0.01em;
+}
+.answer .speech .quote { color: var(--muted); font-size: 24px; }
+.qmark {
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 38px; height: 38px;
+  background: var(--rose);
+  color: white; font-weight: 700;
+  border-radius: 50%;
+  font-size: 22px;
+  box-shadow: 0 8px 16px -8px rgba(220,38,38,0.6);
+  margin-left: auto;
+}
+.answer .confidence-line {
+  font-size: 13px;
+  color: var(--rose);
+  font-weight: 600;
+  margin-left: 4px;
+}
+
+.tagline {
+  text-align: center;
+  font-size: 14px; color: var(--slate);
+  margin: 8px 0 10px 0;
+  letter-spacing: 0.005em;
+}
+.tagline .em { color: var(--ink); font-weight: 600; }
+
+.divider {
+  height: 1px; background: var(--hair); margin: 10px 0 18px 0;
+}
+
+/* ===================== BOTTOM PANEL ===================== */
+.bottom-header {
+  display: flex; justify-content: space-between; align-items: baseline;
+  margin-bottom: 12px;
+}
+.bottom-header .title {
+  font-size: 17px; font-weight: 700; color: var(--ink);
+}
+.bottom-header .legend {
+  display: flex; gap: 22px; font-size: 13px; color: var(--slate);
+  align-items: center;
+}
+.legend .lg-dot {
+  display: inline-block; width: 11px; height: 11px; border-radius: 50%;
+  margin-right: 7px; vertical-align: -1px;
+}
+.lg-dot.b8 { background: var(--indigo); }
+.lg-dot.b27 { background: var(--amber); }
+.legend .lg-zone {
+  display: inline-block; width: 24px; height: 11px;
+  background: #d0eccf; border-radius: 3px; margin-right: 7px;
+  vertical-align: -1px; border: 1px dashed #66946a;
+}
+
+.plot {
+  position: relative;
+  --plot-left: 290px;  /* method-label column width */
+  --plot-right: 130px; /* badge column width */
+  --x0: var(--plot-left);
+  --x1: calc(100% - var(--plot-right));
+  --y-row: 46px;
+}
+.row {
+  display: grid;
+  grid-template-columns: var(--plot-left) 1fr var(--plot-right);
+  align-items: center;
+  height: var(--y-row);
+  position: relative;
+}
+.row + .row { border-top: 1px solid var(--hair); }
+.row.win .name { color: var(--emerald); }
+.row.lose .name { color: var(--rose); }
+
+.row .name-col {
+  display: flex; flex-direction: column; gap: 1px; justify-content: center;
+  padding-right: 12px;
+}
+.row .name {
+  font-size: 16px; font-weight: 700; letter-spacing: -0.005em;
+  color: var(--ink);
+}
+.row .gloss {
+  font-size: 11.5px; color: var(--muted); line-height: 1.3;
+}
+.dag { color: var(--muted); font-weight: 500; }
+
+.row .track-col {
+  position: relative; height: var(--y-row);
+}
+.track {
+  position: absolute; top: 50%; left: 0; right: 12px;
+  height: 1px; background: var(--hair); transform: translateY(-50%);
+}
+.zone {
+  position: absolute; top: 6px; bottom: 6px; left: 0;
+  width: 12.5%; /* 0.10 / 0.80 */
+  background: rgba(22,163,74,0.10);
+  border-right: 1px dashed rgba(22,163,74,0.55);
+  border-radius: 6px 0 0 6px;
+}
+.zone-label {
+  position: absolute; top: -3px;
+  left: 12.5%;
+  transform: translateX(-50%);
+  font-size: 9.5px; color: #3e6b3e; letter-spacing: 0.04em;
+  text-transform: uppercase; font-weight: 700;
+}
+.connector {
+  position: absolute; top: 50%; height: 2px;
+  background: linear-gradient(90deg, var(--indigo) 0%, var(--amber) 100%);
+  transform: translateY(-50%);
+  opacity: 0.55;
+  border-radius: 2px;
+}
+.dot {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  width: 14px; height: 14px; border-radius: 50%;
+  border: 2px solid white;
+}
+.dot.b8  { background: var(--indigo);
+           box-shadow: 0 2px 8px -2px rgba(79,70,229,0.55); }
+.dot.b27 { background: var(--amber);
+           box-shadow: 0 2px 8px -2px rgba(217,119,6,0.55); }
+
+.val {
+  position: absolute; top: 50%; transform: translate(-50%, -50%);
+  font-size: 12px; font-weight: 700;
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+.val.b8  { color: var(--indigo); }
+.val.b27 { color: var(--amber); }
+
+.row .badge-col { display: flex; align-items: center; justify-content: flex-end; }
+.badge {
+  display: inline-flex; align-items: center; gap: 6px;
+  padding: 5px 10px;
+  border-radius: 999px;
+  font-size: 11.5px; font-weight: 600;
+  letter-spacing: 0.01em;
+  background: #efeee8; color: var(--slate);
+}
+.badge.win  { background: rgba(22,163,74,0.10); color: var(--emerald); }
+.badge.ok   { background: rgba(100,116,139,0.10); color: var(--slate); }
+.badge.poor { background: rgba(244,114,182,0.10); color: #9d174d; }
+.badge.bad  { background: rgba(220,38,38,0.10); color: var(--rose); }
+
+.axis {
+  margin-top: 6px;
+  display: grid;
+  grid-template-columns: var(--plot-left) 1fr var(--plot-right);
+  align-items: center;
+  font-size: 11px; color: var(--muted);
+  font-variant-numeric: tabular-nums;
+}
+.axis .ticks {
+  position: relative; height: 16px;
+}
+.tick {
+  position: absolute; top: 0; transform: translateX(-50%);
+  display: flex; flex-direction: column; align-items: center;
+}
+.tick .mark {
+  width: 1px; height: 5px; background: var(--muted); margin-bottom: 2px;
+}
+.axis .lhs { color: var(--ink); font-weight: 600; font-size: 12.5px; }
+.axis .rhs { font-style: italic; color: var(--muted); font-size: 11px; }
+.axis-label {
+  margin-top: 4px;
+  grid-template-columns: var(--plot-left) 1fr var(--plot-right);
+  display: grid;
+}
+.axis-label .lbl {
+  font-size: 11.5px; color: var(--slate);
+  text-align: center;
+  letter-spacing: 0.01em;
+}
+</style>
+</head>
+<body>
+<div class="figure" id="root">
+
+  <!-- ============ TOP PANEL ============ -->
+  <div class="top">
+
+    <!-- TARGET model card -->
+    <div class="card target">
+      <div class="kicker">Target</div>
+      <h2>Target model</h2>
+      <div class="sub">A language model fine-tuned to hide a secret word.</div>
+      <div class="stack">
+        <div class="layer"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+        <div class="layer hl"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+      </div>
+      <div class="label-row">
+        <span><span class="chip">layer 48</span></span>
+        <span style="font-style:italic">secret: “tree”</span>
+      </div>
+    </div>
+
+    <!-- HIDDEN-STATE ribbon connector -->
+    <div class="mid">
+      <div class="h-label">hidden state <span class="em">h &isin; &Ropf;<sup>d</sup>, one layer</span></div>
+      <div class="ribbon">
+        <svg viewBox="0 0 600 100" preserveAspectRatio="xMidYMid meet"
+             font-family="ui-monospace, 'SF Mono', 'JetBrains Mono', Menlo, monospace">
+
+          <!-- Left bracket -->
+          <path d="M 8,18 L 2,18 L 2,62 L 8,62"
+                stroke="#0c0d10" stroke-width="1.8" fill="none"
+                stroke-linecap="round" stroke-linejoin="round"/>
+
+          <!-- 14 cells.  fill = indigo for negative, amber for positive;
+               opacity proportional to |v| / 1.8.                              -->
+          <g stroke="rgba(12,13,16,0.18)" stroke-width="0.5">
+            <rect x="14"    y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.59"/>
+            <rect x="49.5"  y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.34"/>
+            <rect x="85"    y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.23"/>
+            <rect x="120.5" y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.77"/>
+            <rect x="156"   y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.41"/>
+            <rect x="191.5" y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.20"/>
+            <rect x="227"   y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.33"/>
+            <rect x="262.5" y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.97"/>
+            <rect x="298"   y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.24"/>
+            <rect x="333.5" y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.56"/>
+            <rect x="369"   y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.92"/>
+            <rect x="404.5" y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.28"/>
+            <rect x="440"   y="20" width="33.5" height="40" fill="#c2410c" fill-opacity="0.19"/>
+            <rect x="475.5" y="20" width="33.5" height="40" fill="#4338ca" fill-opacity="0.60"/>
+          </g>
+
+          <!-- Numeric labels under cells -->
+          <g fill="#2c3038" font-size="9" text-anchor="middle"
+             font-variant-numeric="tabular-nums">
+            <text x="30.75"  y="76">+0.93</text>
+            <text x="66.25"  y="76">&minus;0.41</text>
+            <text x="101.75" y="76">+0.17</text>
+            <text x="137.25" y="76">&minus;1.32</text>
+            <text x="172.75" y="76">+0.55</text>
+            <text x="208.25" y="76">+0.11</text>
+            <text x="243.75" y="76">&minus;0.38</text>
+            <text x="279.25" y="76">+1.74</text>
+            <text x="314.75" y="76">&minus;0.19</text>
+            <text x="350.25" y="76">+0.87</text>
+            <text x="385.75" y="76">&minus;1.62</text>
+            <text x="421.25" y="76">+0.27</text>
+            <text x="456.75" y="76">+0.08</text>
+            <text x="492.25" y="76">&minus;0.95</text>
+          </g>
+
+          <!-- Right bracket -->
+          <path d="M 511,18 L 517,18 L 517,62 L 511,62"
+                stroke="#0c0d10" stroke-width="1.8" fill="none"
+                stroke-linecap="round" stroke-linejoin="round"/>
+
+          <!-- Ellipsis after the bracket suggests the remaining d - 14 entries -->
+          <text x="525" y="44" font-size="13" fill="#6b7280"
+                font-family="Inter, system-ui, sans-serif">&hellip;</text>
+
+          <!-- Arrow: clear gap (x=544 .. x=596) so it never overlaps cells -->
+          <line x1="544" y1="40" x2="590" y2="40" stroke="#0c0d10"
+                stroke-width="2" stroke-linecap="round"/>
+          <polygon points="588,33 598,40 588,47" fill="#0c0d10"/>
+        </svg>
+      </div>
+      <div class="h-sub">read at layer 48, injected at the oracle&rsquo;s placeholder positions</div>
+    </div>
+
+    <!-- ORACLE model card -->
+    <div class="card oracle">
+      <div class="kicker">Oracle</div>
+      <h2>Oracle</h2>
+      <div class="sub">A second language model trained to read the target’s hidden state.</div>
+      <div class="stack">
+        <div class="layer hl"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+        <div class="layer"></div>
+      </div>
+
+      <div class="answer">
+        <div class="speech">
+          <span class="quote">“</span>
+          <span class="word">tree</span>
+          <span class="quote">”</span>
+          <span class="qmark" title="confidence?">?</span>
+        </div>
+        <div class="confidence-line">…but how sure of that?</div>
+      </div>
+    </div>
+
+  </div>
+
+  <div class="tagline">
+    <span class="em">An AI reads another AI’s hidden thoughts</span> — and decodes an answer.
+    <span class="em">But how confident is the read?</span>
+    Six methods, on two oracles.
+  </div>
+
+  <div class="divider"></div>
+
+  <!-- ============ BOTTOM PANEL ============ -->
+  <div class="bottom-header">
+    <div class="title">Calibration error on the secret-word task</div>
+    <div class="legend">
+      <span><span class="lg-dot b8"></span>Qwen3-8B oracle</span>
+      <span><span class="lg-dot b27"></span>Qwen3.6-27B oracle</span>
+      <span><span class="lg-zone"></span>well-calibrated (ECE ≤ 0.10)</span>
+    </div>
+  </div>
+
+  <div class="plot" id="plot"></div>
+
+  <div class="axis" id="axis">
+    <div></div>
+    <div class="ticks" id="ticks"></div>
+    <div></div>
+  </div>
+  <div class="axis-label">
+    <div></div>
+    <div class="lbl">Expected Calibration Error  (0 = perfectly calibrated &nbsp;·&nbsp; 1 = worst possible)</div>
+    <div></div>
+  </div>
+
+</div>
+
+<script>
+// ---------- DATA ----------
+const methods = [
+  {name: "Bootstrap",        gloss: "sample 20 answers; agreement = confidence",
+   e8: 0.0570, e27: 0.1032, badge: "win",  tag: "est", verdict: "best on both"},
+  {name: "Log-prob",         gloss: "joint token probability of the answer",
+   e8: 0.2551, e27: 0.1312, badge: "ok",   tag: "est", verdict: "decent"},
+  {name: "MCMC agreement",   gloss: "10 power-sampling chains; agreement = confidence",
+   e8: 0.2635, e27: 0.3902, badge: "ok",   tag: "new", verdict: "decent"},
+  {name: "Steering sens.",   gloss: "vary injection strength; stability = confidence",
+   e8: 0.4036, e27: 0.5009, badge: "poor", tag: "new", verdict: "poor"},
+  {name: "MCMC acceptance",  gloss: "MH chain acceptance rate as confidence",
+   e8: 0.5438, e27: 0.7396, badge: "poor", tag: "new", verdict: "poor"},
+  {name: "Direct (numeric)", gloss: "ask the oracle ‘how confident are you?’",
+   e8: 0.5816, e27: 0.7527, badge: "bad",  tag: "est", verdict: "anti-calibrated"},
+];
+
+const xMax = 0.80;          // axis upper bound
+const ticksPct = [0, 10, 20, 30, 40, 50, 60, 70, 80];
+
+// ---------- RENDER ROWS ----------
+const plot = document.getElementById("plot");
+methods.forEach((m, i) => {
+  const win  = m.badge === "win";
+  const lose = m.badge === "bad";
+  const dagger = (m.tag === "new") ? ' <span class="dag">†</span>' : '';
+  const row = document.createElement("div");
+  row.className = "row" + (win ? " win" : "") + (lose ? " lose" : "");
+  const xa = (m.e8  / xMax) * 100;
+  const xb = (m.e27 / xMax) * 100;
+  const left  = Math.min(xa, xb);
+  const right = Math.max(xa, xb);
+  const zoneLabel = (i === 0)
+    ? '<div class="zone-label">calibrated</div>' : '';
+
+  row.innerHTML = `
+    <div class="name-col">
+      <div class="name">${m.name}${dagger}</div>
+      <div class="gloss">${m.gloss}</div>
+    </div>
+    <div class="track-col">
+      <div class="zone"></div>
+      ${zoneLabel}
+      <div class="track"></div>
+      <div class="connector" style="left:${left}%; width:${right - left}%"></div>
+      <div class="dot b8"  style="left:${xa}%"></div>
+      <div class="dot b27" style="left:${xb}%"></div>
+      <div class="val b8"  style="left:${xa}%; top: calc(50% - 18px)">${m.e8.toFixed(3)}</div>
+      <div class="val b27" style="left:${xb}%; top: calc(50% + 18px)">${m.e27.toFixed(3)}</div>
+    </div>
+    <div class="badge-col">
+      <span class="badge ${m.badge}">${win?'✓ ':''}${lose?'✗ ':''}${m.verdict}</span>
+    </div>
+  `;
+  plot.appendChild(row);
+});
+
+// ---------- AXIS TICKS ----------
+const ticks = document.getElementById("ticks");
+ticksPct.forEach(p => {
+  const t = document.createElement("div");
+  t.className = "tick";
+  t.style.left = ((p / 100) / xMax * 100) + "%";
+  t.innerHTML = `<span class="mark"></span><span>${p === 0 ? "0" : "0." + (p<10?"0":"") + p}</span>`;
+  ticks.appendChild(t);
+});
+</script>
+
+</body>
+</html>

@@ -31,10 +31,20 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
         "EvilScript/activation-oracle-gemma-4-31B-it",
         "EvilScript/taboo-{word}-gemma-4-31B-it",
     ),
+    "gemma-2-9b": (
+        "google/gemma-2-9B-it",
+        "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it",
+        "bcywinski/gemma-2-9b-it-taboo-{word}",
+    ),
     "qwen3.6-27b": (
         "Qwen/Qwen3.6-27B",
         "EvilScript/activation-oracle-Qwen3_6-27B",
         "EvilScript/Qwen3_6-27B-taboo-{word}",
+    ),
+    "llama-3.1-8b": (
+        "meta-llama/Llama-3.1-8B-Instruct",
+        "adamkarvonen/checkpoints_latentqa_cls_past_lens_Llama-3_1-8B-Instruct",
+        "bcywinski/llama-3.1-8b-instruct-taboo-{word}",
     ),
 }
 
@@ -51,7 +61,9 @@ PRESET_SELECTED_LAYER_PERCENT: dict[str, int] = {
     "qwen3-8b": 50,
     "qwen3-32b": 50,
     "gemma-4-31b": 50,
+    "gemma-2-9b": 50,
     "qwen3.6-27b": 75,
+    "llama-3.1-8b": 50,
 }
 
 # AO_ROOT is used purely as a dataset path (datasets/taboo/...).

@@ -51,3 +51,8 @@ explicit = true
 
 [tool.uv.sources]
 torch = { index = "pytorch-cu130" }
+
+[dependency-groups]
+dev = [
+    "scikit-learn>=1.8.0",
+]
