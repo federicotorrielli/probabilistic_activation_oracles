@@ -26,11 +26,11 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_Qwen3-32B",
         "adamkarvonen/Qwen3-32B-taboo-{word}",
     ),
-    "gemma-4-31b": (
-        "google/gemma-4-31B-it",
-        "EvilScript/activation-oracle-gemma-4-31B-it",
-        "EvilScript/taboo-{word}-gemma-4-31B-it",
-    ),
+    # "gemma-4-31b": (
+    #     "google/gemma-4-31B-it",
+    #     "EvilScript/activation-oracle-gemma-4-31B-it",
+    #     "EvilScript/taboo-{word}-gemma-4-31B-it",
+    # ),
     "gemma-2-9b": (
         "google/gemma-2-9B-it",
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it",
