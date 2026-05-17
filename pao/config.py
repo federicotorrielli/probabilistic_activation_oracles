@@ -58,12 +58,12 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
 # board). Keys must match MODEL_PRESETS exactly so a missing entry fails
 # loudly when adding a new preset.
 PRESET_SELECTED_LAYER_PERCENT: dict[str, int] = {
-    "qwen3-8b": 50,
+    "qwen3-8b": 50,  # 75 would be slightly better
     "qwen3-32b": 50,
     "gemma-4-31b": 50,
-    "gemma-2-9b": 50,
+    "gemma-2-9b": 25,
     "qwen3.6-27b": 75,
-    "llama-3.1-8b": 50,
+    "llama-3.1-8b": 25,
 }
 
 # AO_ROOT is used purely as a dataset path (datasets/taboo/...).

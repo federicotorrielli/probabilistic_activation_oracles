@@ -78,7 +78,7 @@ import matplotlib.pyplot as plt
 # (prompt format, answer extraction, confidence definitions, ...). The value
 # is mixed into ``config_hash`` so stale checkpoints fail loudly instead of
 # silently appending incompatible predictions.
-CODE_VERSION = "11"
+CODE_VERSION = "12"
 
 
 def temperature_tag(temp: float) -> str:
@@ -791,6 +791,9 @@ def run_all_methods(
                                 is_correct=agree_result.mode_answer == target_word,
                                 method=agree_method,
                                 method_metadata={
+                                    "raw_outputs": [
+                                        r.generated_text for r in agree_result.samples
+                                    ],
                                     "normalized_samples": agree_result.normalized_samples,
                                     "entropy": agree_result.entropy,
                                     "num_unique": agree_result.num_unique,

@@ -1,8 +1,9 @@
 """Build the per-layer accuracy figure for Appendix E.
 
-Reads ``results/{preset}/layer_sweep/sweep.json`` for each of the three
-presets and produces a 3-panel matplotlib figure (8B / 27B / Gemma 4 31B)
-of per-layer task accuracy on the secret-word task.
+Reads ``results/{preset}/layer_sweep/sweep.json`` for each preset and
+produces a 2x2 matplotlib figure of per-layer task accuracy on the
+secret-word task across the four oracles we sweep
+(Qwen3-8B, Qwen3.6-27B, Gemma-2-9B, Llama-3.1-8B).
 
 Trained-layer indices are marked; for hybrid-attention models we color
 sliding vs. full-attention layers separately so the spike pattern is
@@ -23,6 +24,8 @@ from pao.hf_utils import get_text_config, resolve_oracle_layers
 PRESETS = [
     ("qwen3-8b", "Qwen3-8B (36 layers, full attention)"),
     ("qwen3.6-27b", "Qwen3.6-27B (64 layers, hybrid linear/full)"),
+    ("gemma-2-9b", "Gemma-2-9B (42 layers, hybrid sliding/full)"),
+    ("llama-3.1-8b", "Llama-3.1-8B (32 layers, full attention)"),
 ]
 
 
@@ -62,7 +65,8 @@ def _accuracy_per_layer(payload: dict) -> dict[int, float]:
 
 
 def main() -> None:
-    fig, axes = plt.subplots(1, 2, figsize=(14, 4.0), sharey=True)
+    fig, axes2d = plt.subplots(2, 2, figsize=(14, 7.0), sharey=True)
+    axes = axes2d.flatten()
 
     for ax, (preset, title) in zip(axes, PRESETS):
         payload = _load(preset)
@@ -101,9 +105,9 @@ def main() -> None:
         ax.spines["top"].set_visible(False)
         ax.spines["right"].set_visible(False)
 
-    axes[0].set_ylabel("task accuracy (secret-word recovery)", fontsize=10)
+    axes2d[0, 0].set_ylabel("task accuracy (secret-word recovery)", fontsize=10)
+    axes2d[1, 0].set_ylabel("task accuracy (secret-word recovery)", fontsize=10)
 
-    # Legend on the right-most axis only
     from matplotlib.patches import Patch
     from matplotlib.lines import Line2D
 
@@ -113,7 +117,7 @@ def main() -> None:
         Line2D([0], [0], color="#c2410c", lw=1.2, ls="--",
                label="verbalizer training layer"),
     ]
-    axes[-1].legend(
+    axes2d[0, 1].legend(
         handles=legend_handles,
         loc="upper right",
         fontsize=8,
