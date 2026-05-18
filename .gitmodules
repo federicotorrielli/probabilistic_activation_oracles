@@ -1,6 +1,6 @@
 [submodule "activation_oracles"]
 	path = activation_oracles
-	url = https://github.com/federicotorrielli/activation_oracles_qwen36
+	url = git@github.com:federicotorrielli/activation_oracles_qwen36.git
 [submodule "reasoning-with-sampling"]
 	path = reasoning-with-sampling
 	url = git@github.com:aakaran/reasoning-with-sampling.git
