@@ -31,6 +31,11 @@ MODEL_PRESETS: dict[str, tuple[str, str, str]] = {
     #     "EvilScript/activation-oracle-gemma-4-31B-it",
     #     "EvilScript/taboo-{word}-gemma-4-31B-it",
     # ),
+    "gemma-3-27b": (
+        "google/gemma-3-27B-it",
+        "annasoli/gemma-3-27b-activation-oracle",
+        "EvilScript/gemma-3-27b-it-taboo-{word}",
+    ),
     "gemma-2-9b": (
         "google/gemma-2-9B-it",
         "adamkarvonen/checkpoints_latentqa_cls_past_lens_addition_gemma-2-9b-it",
