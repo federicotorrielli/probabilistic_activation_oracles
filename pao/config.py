@@ -67,6 +67,7 @@ PRESET_SELECTED_LAYER_PERCENT: dict[str, int] = {
     "qwen3-32b": 50,
     "gemma-4-31b": 50,
     "gemma-2-9b": 25,
+    "gemma-3-27b": 75,  # band peak at L46 (53% vs L40 peak 56%); L31 reads 50%
     "qwen3.6-27b": 75,
     "llama-3.1-8b": 25,
 }
@@ -176,7 +177,7 @@ class ModelConfig:
 
             text_cfg = get_text_config(AutoConfig.from_pretrained(model_name))
             resolved_inject, resolved_percents = resolve_oracle_layers(
-                text_cfg, layer_percents
+                text_cfg, layer_percents, model_name=model_name
             )
             if injection_layer is None:
                 injection_layer = resolved_inject

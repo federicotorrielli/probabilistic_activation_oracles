@@ -3,7 +3,7 @@
 Reads ``results/{preset}/layer_sweep/sweep.json`` for each preset and
 produces a 2x2 matplotlib figure of per-layer task accuracy on the
 secret-word task across the four oracles we sweep
-(Qwen3-8B, Qwen3.6-27B, Gemma-2-9B, Llama-3.1-8B).
+(Qwen3-8B, Qwen3.6-27B, Gemma-2-9B, Gemma-3-27B).
 
 Trained-layer indices are marked; for hybrid-attention models we color
 sliding vs. full-attention layers separately so the spike pattern is
@@ -25,7 +25,7 @@ PRESETS = [
     ("qwen3-8b", "Qwen3-8B (36 layers, full attention)"),
     ("qwen3.6-27b", "Qwen3.6-27B (64 layers, hybrid linear/full)"),
     ("gemma-2-9b", "Gemma-2-9B (42 layers, hybrid sliding/full)"),
-    ("llama-3.1-8b", "Llama-3.1-8B (32 layers, full attention)"),
+    ("gemma-3-27b", "Gemma-3-27B (62 layers, hybrid sliding/full)"),
 ]
 
 
@@ -43,9 +43,9 @@ def _trained_layers(model_name: str) -> list[int]:
         cfg = get_text_config(AutoConfig.from_pretrained(model_name))
     except Exception:
         return []
-    _inject, percents = resolve_oracle_layers(cfg, [25, 50, 75])
+    _inject, percents = resolve_oracle_layers(cfg, [25, 50, 75], model_name=model_name)
     n = cfg.num_hidden_layers
-    return sorted({int(round(p / 100 * n)) for p in percents if 0 <= p <= 100})
+    return sorted({int(n * p / 100) for p in percents if 0 <= p <= 100})
 
 
 def _load(preset: str) -> dict | None:

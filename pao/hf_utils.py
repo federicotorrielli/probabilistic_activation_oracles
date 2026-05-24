@@ -111,7 +111,7 @@ def resolve_attention_implementation(model_name: str, requested: str = "auto") -
 
     model_name_lower = model_name.lower()
     if "gemma" in model_name_lower:
-        return "eager"
+        return "sdpa"
     return "flash_attention_2"
 
 
@@ -266,35 +266,42 @@ def get_text_config(model_or_config):
 def resolve_oracle_layers(
     text_cfg,
     layer_percents: list[int] | None = None,
+    model_name: str | None = None,
 ) -> tuple[int, list[int]]:
     """Pick the read/inject layers the activation oracle was trained on.
 
     Mirrors the rule used by the AO trainer in `nl_probes/gemma4_sft.py`:
 
-    * For Gemma 4's mixed sliding/full attention stack (i.e. `layer_types`
-      contains both `"sliding_attention"` and `"full_attention"`), each
-      requested percent is snapped to the nearest full-attention layer, and
-      the integer percent that maps to that layer via `int(num_layers * p /
+    * For Gemma 4's mixed sliding/full attention stack, each requested
+      percent is snapped to the nearest full-attention layer, and the
+      integer percent that maps to that layer via `int(num_layers * p /
       100)` is returned. The injection layer is the first full-attention
       layer.
-    * For every other architecture (Qwen, Llama, Gemma 2, Gemma 3 text-only,
+    * For every other architecture (Qwen, Llama, Gemma 2, Gemma 3,
       Mistral, Qwen 3.6's linear/full hybrid, ...) the percents pass through
       unchanged and the injection layer defaults to 1, matching the AO
       paper's standard recipe (Appendix A.5: layer 1 uniformly across every
-      released oracle, no full-attention snapping).
+      released oracle, no full-attention snapping). The general
+      `nl_probes/sft.py` trainer Anna and others used does not snap, even
+      for Gemma 3's 5:1 sliding/full pattern.
 
-    This is the single rule shared between training and inference: as long as
-    the trainer used the same rule, pao reads from the layer the oracle was
-    actually trained on.
+    The snap is gated on the model name (must contain "gemma-4"), not the
+    attention pattern alone, because Gemma 3 shares the sliding/full layer
+    type vocabulary but was trained without snapping.
     """
     if layer_percents is None:
         layer_percents = [25, 50, 75]
 
+    if model_name is None:
+        model_name = getattr(text_cfg, "_name_or_path", "") or ""
+
     layer_types = getattr(text_cfg, "layer_types", None)
-    # Snapping is Gemma-4 specific: only fire when sliding+full attention is
-    # the reason for the mixed-types pattern. Other hybrid stacks (e.g. Qwen
-    # 3.6's linear+full) use the standard recipe — their trainers snap
-    # nothing.
+    # Snap only for Gemma 4. Gemma 3 has the same layer_types vocabulary but
+    # its oracle (e.g. annasoli/gemma-3-27b-activation-oracle) was trained via
+    # `nl_probes/sft.py`, which uses hook_onto_layer=1 and read layers at
+    # int(n * p / 100) with no attention-pattern adjustment.
+    if "gemma-4" not in model_name.lower():
+        return 1, list(layer_percents)
     if not layer_types or "sliding_attention" not in layer_types:
         return 1, list(layer_percents)
 
@@ -352,7 +359,12 @@ def get_hf_submodule(model: AutoModelForCausalLM, layer: int, use_lora: bool = F
     if "pythia" in model_name:
         return model.gpt_neox.layers[layer]
     elif "gemma-3" in model_name:
-        return model.language_model.layers[layer]
+        # Gemma3ForConditionalGeneration (multimodal) nests the text decoder under
+        # .model.language_model; Gemma3ForCausalLM puts it directly at .model.
+        # Probe for .language_model to handle both.
+        inner = model.model
+        text_model = getattr(inner, "language_model", inner)
+        return text_model.layers[layer]
     elif "gemma-4" in model_name:
         # See the LoRA branch above: Gemma4ForConditionalGeneration nests a
         # Gemma4TextModel under .model.language_model, while Gemma4ForCausalLM has

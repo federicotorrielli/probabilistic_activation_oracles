@@ -453,7 +453,6 @@ def run_all_methods(
                 break
             for ctx_prompt in context_prompts:
                 if (target_word, verbalizer_prompt, ctx_prompt) in completed_keys:
-                    pbar.update(1)
                     continue
 
                 sampler, oracle_ids, oracle_messages = prepare_activation_and_sampler(
