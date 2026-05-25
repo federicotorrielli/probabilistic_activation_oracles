@@ -2,6 +2,7 @@
 name = "probabilistic-activation-oracles"
 version = "0.1.0"
 description = "Uncertainty quantification for activation oracles via MCMC power sampling"
+license = "EUPL-1.2"
 requires-python = ">=3.13"
 dependencies = [
     "scipy",
