@@ -1,6 +1,7 @@
 CLAUDE.md
 AGENTS.md
 .codex
+paper/
 results/gemma-2-9b/taboo_uq/checkpoint.json
 
 # Byte-compiled / optimized / DLL files
