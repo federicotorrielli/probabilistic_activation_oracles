@@ -106,6 +106,60 @@
       }
     }
   },
+  "direct_linguistic_expected": {
+    "accuracy": 0.4145,
+    "ece": 0.4399703702516313,
+    "brier_score": 0.42332709550908665,
+    "nll": 1.1517981245369924,
+    "auroc": 0.8190904116149208,
+    "conf_given_correct": 0.8713207471197268,
+    "conf_given_wrong": 0.8425412819308361,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {
+        "confidence_variant": {
+          "expected": 6000
+        }
+      }
+    }
+  },
+  "direct_linguistic_p_very_high": {
+    "accuracy": 0.4145,
+    "ece": 0.4249543712536494,
+    "brier_score": 0.3870328209436332,
+    "nll": 1.06384719216608,
+    "auroc": 0.8119998544094535,
+    "conf_given_correct": 0.8936382845122027,
+    "conf_given_wrong": 0.8010953071278247,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {
+        "confidence_variant": {
+          "p_very_high": 6000
+        }
+      }
+    }
+  },
+  "direct_linguistic_p_high_plus": {
+    "accuracy": 0.4145,
+    "ece": 0.5483406788790599,
+    "brier_score": 0.5298383257103102,
+    "nll": 1.9455394184778858,
+    "auroc": 0.8190241976753356,
+    "conf_given_correct": 0.9814545315576872,
+    "conf_given_wrong": 0.9496631520894936,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {
+        "confidence_variant": {
+          "p_high_plus": 6000
+        }
+      }
+    }
+  },
   "bootstrap_t0p3": {
     "accuracy": 0.4195,
     "ece": 0.33438333333333337,
