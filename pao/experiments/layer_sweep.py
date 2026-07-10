@@ -19,6 +19,7 @@ Usage:
 
 Resumes per-word from ``sweep.json`` if it exists.
 """
+
 from __future__ import annotations
 
 import argparse
@@ -271,7 +272,10 @@ def main() -> None:
         try:
             with open(sweep_path) as f:
                 prior = json.load(f)
-            if prior.get("preset") == args.preset and prior.get("num_layers") == num_layers:
+            if (
+                prior.get("preset") == args.preset
+                and prior.get("num_layers") == num_layers
+            ):
                 rows = prior.get("rows", [])
                 completed_words = {r["word"] for r in rows}
                 print(

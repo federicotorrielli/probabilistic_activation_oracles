@@ -302,11 +302,7 @@ class SteeredAutoregressiveSampler:
         token_log_distributions = F.log_softmax(unscaled_logits.float(), dim=-1)
         token_distributions = torch.exp(token_log_distributions)
 
-        log_probs = (
-            torch.gather(token_log_distributions, -1, idx)
-            .view(-1)
-            .tolist()
-        )
+        log_probs = torch.gather(token_log_distributions, -1, idx).view(-1).tolist()
         entropies = (
             (-(token_distributions * token_log_distributions).sum(dim=-1))
             .view(-1)

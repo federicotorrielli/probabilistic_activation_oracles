@@ -1,0 +1,16 @@
+{
+  "forced_choice": {
+    "accuracy": 0.5903333333333334,
+    "ece": 0.08995439009981551,
+    "brier_score": 0.11490188677737116,
+    "nll": 0.3602063508192686,
+    "auroc": 0.9218106423947157,
+    "conf_given_correct": 0.8080025584590024,
+    "conf_given_wrong": 0.3706508306251168,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  }
+}

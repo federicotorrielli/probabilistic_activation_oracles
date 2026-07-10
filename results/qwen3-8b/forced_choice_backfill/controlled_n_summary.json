@@ -1,0 +1,119 @@
+{
+  "N2": {
+    "target_words": [
+      "snow",
+      "ship"
+    ],
+    "methods": {
+      "forced_choice": {
+        "accuracy": 0.8666666666666667,
+        "ece": 0.10214035467040992,
+        "brier_score": 0.056718292991220734,
+        "nll": 0.19600694624339368,
+        "auroc": 0.9834134615384615,
+        "conf_given_correct": 0.870025859174156,
+        "conf_given_wrong": 0.29321058599769423,
+        "n_samples": 600,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N5": {
+    "target_words": [
+      "flame",
+      "green",
+      "leaf",
+      "rock",
+      "snow"
+    ],
+    "methods": {
+      "forced_choice": {
+        "accuracy": 0.6633333333333333,
+        "ece": 0.09205607950587182,
+        "brier_score": 0.10323039586113913,
+        "nll": 0.3340237744270824,
+        "auroc": 0.9401582168267077,
+        "conf_given_correct": 0.7820963678536527,
+        "conf_given_wrong": 0.2994347161620743,
+        "n_samples": 1500,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N10": {
+    "target_words": [
+      "gold",
+      "song",
+      "chair",
+      "wave",
+      "ship",
+      "blue",
+      "snow",
+      "smile",
+      "flame",
+      "flag"
+    ],
+    "methods": {
+      "forced_choice": {
+        "accuracy": 0.6513333333333333,
+        "ece": 0.07891379373890803,
+        "brier_score": 0.09562074849449444,
+        "nll": 0.3092111678383623,
+        "auroc": 0.9460752175759486,
+        "conf_given_correct": 0.8118651619323592,
+        "conf_given_wrong": 0.29545883292780656,
+        "n_samples": 3000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N20": {
+    "target_words": [
+      "ship",
+      "gold",
+      "jump",
+      "chair",
+      "green",
+      "book",
+      "flag",
+      "rock",
+      "smile",
+      "song",
+      "leaf",
+      "moon",
+      "clock",
+      "wave",
+      "blue",
+      "dance",
+      "cloud",
+      "snow",
+      "flame",
+      "salt"
+    ],
+    "methods": {
+      "forced_choice": {
+        "accuracy": 0.6456666666666667,
+        "ece": 0.07802414019350569,
+        "brier_score": 0.10022300039272784,
+        "nll": 0.3235192479968413,
+        "auroc": 0.9398775443400318,
+        "conf_given_correct": 0.7974668122769689,
+        "conf_given_wrong": 0.29258106963999625,
+        "n_samples": 6000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  }
+}

@@ -9,6 +9,7 @@ Trained-layer indices are marked; for hybrid-attention models we color
 sliding vs. full-attention layers separately so the spike pattern is
 legible.
 """
+
 from __future__ import annotations
 
 import json
@@ -114,8 +115,14 @@ def main() -> None:
     legend_handles = [
         Patch(color="#4338ca", label="full attention"),
         Patch(color="#94a3b8", label="sliding / linear attention"),
-        Line2D([0], [0], color="#c2410c", lw=1.2, ls="--",
-               label="verbalizer training layer"),
+        Line2D(
+            [0],
+            [0],
+            color="#c2410c",
+            lw=1.2,
+            ls="--",
+            label="verbalizer training layer",
+        ),
     ]
     axes2d[0, 1].legend(
         handles=legend_handles,

@@ -4,6 +4,7 @@ For each (model, method-temperature) row in results/, resample with
 replacement B times over the 6000 samples and report the central 95%
 interval for each metric. Output: results/bootstrap_cis/{model}.json
 """
+
 from __future__ import annotations
 
 import json
@@ -90,7 +91,12 @@ def bootstrap_metrics(confs, correct, B=B, seed=0):
     se = np.std(samples, axis=0, ddof=1)
     names = ["ece", "brier", "nll", "auroc", "acc"]
     return {
-        name: {"point": float(point[i]), "lo": float(lo[i]), "hi": float(hi[i]), "se": float(se[i])}
+        name: {
+            "point": float(point[i]),
+            "lo": float(lo[i]),
+            "hi": float(hi[i]),
+            "se": float(se[i]),
+        }
         for i, name in enumerate(names)
     }
 
@@ -107,9 +113,13 @@ def main():
             if len(confs) == 0:
                 continue
             key = fname.replace("_results.json", "")
-            out[key] = bootstrap_metrics(confs, correct, B=B, seed=hash(key) & 0xFFFFFFFF)
-            print(f"{model:14s} {key:30s} ECE={out[key]['ece']['point']:.3f} "
-                  f"({out[key]['ece']['lo']:.3f}, {out[key]['ece']['hi']:.3f})")
+            out[key] = bootstrap_metrics(
+                confs, correct, B=B, seed=hash(key) & 0xFFFFFFFF
+            )
+            print(
+                f"{model:14s} {key:30s} ECE={out[key]['ece']['point']:.3f} "
+                f"({out[key]['ece']['lo']:.3f}, {out[key]['ece']['hi']:.3f})"
+            )
         with open(OUT / f"{model}.json", "w") as f:
             json.dump(out, f, indent=2)
         print(f"wrote {OUT / (model + '.json')}\n")

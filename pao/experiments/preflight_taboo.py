@@ -27,7 +27,13 @@ from typing import Any
 
 import torch
 
-from pao.config import AO_ROOT, MODEL_PRESETS, TABOO_WORDS, VERBALIZER_PROMPTS_TABOO, ModelConfig
+from pao.config import (
+    AO_ROOT,
+    MODEL_PRESETS,
+    TABOO_WORDS,
+    VERBALIZER_PROMPTS_TABOO,
+    ModelConfig,
+)
 from pao.experiments._preflight_support import (
     _base_segment_positions,
     _generate_text,
@@ -264,7 +270,8 @@ def _run_gemma_surface_stage(
 
     act_layer = int(text_cfg.num_hidden_layers * (cfg.selected_layer_percent / 100))
     oracle_user_content = (
-        get_introspection_prefix(act_layer, abs(cfg.segment_start_idx)) + verb_prompts[0]
+        get_introspection_prefix(act_layer, abs(cfg.segment_start_idx))
+        + verb_prompts[0]
     )
     oracle_ids = tokenizer.apply_chat_template(
         [{"role": "user", "content": oracle_user_content}],
@@ -305,7 +312,11 @@ def _run_gemma_surface_stage(
         )[0]
 
     module_ratio = min(verbalizer_count, target_count) / max(expected_modules, 1)
-    if module_ratio >= 0.9 and steered_generation.strip() and steered_generation != oracle_generation_no_steer:
+    if (
+        module_ratio >= 0.9
+        and steered_generation.strip()
+        and steered_generation != oracle_generation_no_steer
+    ):
         status = "pass"
     elif module_ratio >= 0.9:
         status = "warn"
@@ -471,7 +482,9 @@ def _run_target_encoding_stage(
     target_adapter = load_lora_adapter(
         model, cfg.target_lora_template.format(word=focus_word)
     )
-    candidate_words = [focus_word] + [word for word in TABOO_WORDS if word != focus_word]
+    candidate_words = [focus_word] + [
+        word for word in TABOO_WORDS if word != focus_word
+    ]
 
     base_ranks: list[int] = []
     target_ranks: list[int] = []
@@ -726,7 +739,10 @@ def _run_adapter_contrast_stage(
                 adapter_label=word,
             )
             contrast_by_adapter[word] = contrast
-            if contrast.best_by_word[word].target_rank < base.best_by_word[word].target_rank:
+            if (
+                contrast.best_by_word[word].target_rank
+                < base.best_by_word[word].target_rank
+            ):
                 improvement_counts[word] += 1
 
         source_best = contrast_by_adapter[focus_word].best_by_word[focus_word]
@@ -779,7 +795,9 @@ def _run_adapter_contrast_stage(
         details={
             "candidate_words": candidate_words,
             "improvement_counts": improvement_counts,
-            "mean_patch_improvement": mean(patch_improvements) if patch_improvements else 0.0,
+            "mean_patch_improvement": mean(patch_improvements)
+            if patch_improvements
+            else 0.0,
         },
     )
 

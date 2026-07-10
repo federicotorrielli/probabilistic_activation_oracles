@@ -151,11 +151,15 @@ def load_json(path: Path) -> Any:
 def discover_latest_run() -> Path:
     summaries = sorted(RESULTS_ROOT.glob("**/comparison_summary.json"))
     if not summaries:
-        raise FileNotFoundError(f"No comparison_summary.json found under {RESULTS_ROOT}")
+        raise FileNotFoundError(
+            f"No comparison_summary.json found under {RESULTS_ROOT}"
+        )
     return max(summaries, key=lambda path: path.stat().st_mtime).parent
 
 
-def read_run(run_dir: Path) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any] | None]:
+def read_run(
+    run_dir: Path,
+) -> tuple[dict[str, Any], dict[str, Any], dict[str, Any], dict[str, Any] | None]:
     comparison = load_json(run_dir / "comparison_summary.json")
     checkpoint_path = run_dir / "checkpoint.json"
     checkpoint = load_json(checkpoint_path) if checkpoint_path.exists() else {}
@@ -188,10 +192,14 @@ def score_rows(comparison: dict[str, Any]) -> list[dict[str, Any]]:
     ranks_by_metric: dict[str, dict[str, int]] = {}
     for _, key, higher_better, _ in METRICS:
         ordered = sorted(rows, key=lambda row: row[key], reverse=higher_better)
-        ranks_by_metric[key] = {row["method"]: rank for rank, row in enumerate(ordered, start=1)}
+        ranks_by_metric[key] = {
+            row["method"]: rank for rank, row in enumerate(ordered, start=1)
+        }
 
     for row in rows:
-        row["ranks"] = {key: ranks[row["method"]] for key, ranks in ranks_by_metric.items()}
+        row["ranks"] = {
+            key: ranks[row["method"]] for key, ranks in ranks_by_metric.items()
+        }
         row["avg_rank"] = sum(row["ranks"].values()) / len(row["ranks"])
 
     rows.sort(key=lambda row: (row["avg_rank"], row["ece"]))
@@ -220,7 +228,9 @@ def metric_winners(comparison: dict[str, Any]) -> list[dict[str, Any]]:
     return winners
 
 
-def word_accuracy(predictions: list[dict[str, Any]]) -> dict[str, tuple[int, int, float]]:
+def word_accuracy(
+    predictions: list[dict[str, Any]],
+) -> dict[str, tuple[int, int, float]]:
     counts: dict[str, list[int]] = defaultdict(lambda: [0, 0])
     for pred in predictions:
         word = str(pred["target_word"])
@@ -232,7 +242,9 @@ def word_accuracy(predictions: list[dict[str, Any]]) -> dict[str, tuple[int, int
     }
 
 
-def binned_reliability(predictions: list[dict[str, Any]], bins: int = 10) -> dict[str, np.ndarray]:
+def binned_reliability(
+    predictions: list[dict[str, Any]], bins: int = 10
+) -> dict[str, np.ndarray]:
     conf = np.array([float(p["confidence"]) for p in predictions], dtype=float)
     correct = np.array([bool(p["is_correct"]) for p in predictions], dtype=float)
     conf = np.clip(conf, 0.0, 1.0)
@@ -279,13 +291,17 @@ def set_common_style() -> None:
 
 def plot_rank_heatmap(rows: list[dict[str, Any]], out: Path) -> None:
     methods = [row["method"] for row in rows]
-    rank_matrix = np.array([[row["ranks"][key] for _, key, _, _ in METRICS] for row in rows])
+    rank_matrix = np.array(
+        [[row["ranks"][key] for _, key, _, _ in METRICS] for row in rows]
+    )
 
     fig_h = max(5.8, 0.36 * len(rows) + 1.5)
     fig, ax = plt.subplots(figsize=(8.2, fig_h))
     im = ax.imshow(rank_matrix, cmap="RdYlGn_r", vmin=1, vmax=len(rows), aspect="auto")
     ax.set_xticks(np.arange(len(METRICS)), [label for label, _, _, _ in METRICS])
-    ax.set_yticks(np.arange(len(methods)), [pretty_method(method) for method in methods])
+    ax.set_yticks(
+        np.arange(len(methods)), [pretty_method(method) for method in methods]
+    )
     ax.set_title("Metric rank heatmap, lower rank is better")
 
     for i in range(rank_matrix.shape[0]):
@@ -323,7 +339,13 @@ def plot_pareto(comparison: dict[str, Any], out: Path) -> None:
             linewidth=0.7,
         )
         for method, xx, yy in zip(family_methods, x, y, strict=True):
-            ax.annotate(short_method(method), (xx, yy), xytext=(5, 4), textcoords="offset points", fontsize=7)
+            ax.annotate(
+                short_method(method),
+                (xx, yy),
+                xytext=(5, 4),
+                textcoords="offset points",
+                fontsize=7,
+            )
 
     ax.set_xlabel("ECE, lower is better")
     ax.set_ylabel("AUROC, higher is better")
@@ -366,14 +388,18 @@ def plot_reliability_grid(
     methods = [method for method in SELECTED_METHODS if method in predictions_by_method]
     ncols = 3
     nrows = math.ceil(len(methods) / ncols)
-    fig, axes = plt.subplots(nrows, ncols, figsize=(10.8, 3.45 * nrows), sharex=True, sharey=True)
+    fig, axes = plt.subplots(
+        nrows, ncols, figsize=(10.8, 3.45 * nrows), sharex=True, sharey=True
+    )
     axes_arr = np.atleast_1d(axes).ravel()
 
     for ax, method in zip(axes_arr, methods, strict=False):
         data = binned_reliability(predictions_by_method[method]["predictions"], bins=10)
         valid = data["count"] > 0
         sizes = 24 + 360 * data["count"][valid] / max(data["count"].max(), 1)
-        color = METHOD_COLORS.get(method, FAMILY_COLORS.get(method_family(method), "#444444"))
+        color = METHOD_COLORS.get(
+            method, FAMILY_COLORS.get(method_family(method), "#444444")
+        )
         ax.plot([0, 1], [0, 1], color="#777777", linewidth=1, linestyle="--")
         ax.scatter(
             data["mean_conf"][valid],
@@ -384,7 +410,13 @@ def plot_reliability_grid(
             linewidth=0.7,
             alpha=0.9,
         )
-        ax.plot(data["mean_conf"][valid], data["accuracy"][valid], color=color, linewidth=1.4, alpha=0.75)
+        ax.plot(
+            data["mean_conf"][valid],
+            data["accuracy"][valid],
+            color=color,
+            linewidth=1.4,
+            alpha=0.75,
+        )
         ax.set_title(
             f"{pretty_method(method)}\n"
             f"ECE {100 * comparison[method]['ece']:.1f}%, "
@@ -398,7 +430,9 @@ def plot_reliability_grid(
     for ax in axes_arr[len(methods) :]:
         ax.axis("off")
 
-    fig.suptitle("Reliability fingerprints, point size is bin count", y=1.01, fontsize=13)
+    fig.suptitle(
+        "Reliability fingerprints, point size is bin count", y=1.01, fontsize=13
+    )
     fig.tight_layout()
     fig.savefig(out, bbox_inches="tight")
     plt.close(fig)
@@ -412,9 +446,13 @@ def plot_controlled_n(controlled: dict[str, Any], out: Path) -> None:
     for method in TREND_METHODS:
         if not all(method in controlled[n_key]["methods"] for n_key in n_keys):
             continue
-        color = METHOD_COLORS.get(method, FAMILY_COLORS.get(method_family(method), "#444444"))
+        color = METHOD_COLORS.get(
+            method, FAMILY_COLORS.get(method_family(method), "#444444")
+        )
         ece = [100.0 * controlled[n_key]["methods"][method]["ece"] for n_key in n_keys]
-        acc = [100.0 * controlled[n_key]["methods"][method]["accuracy"] for n_key in n_keys]
+        acc = [
+            100.0 * controlled[n_key]["methods"][method]["accuracy"] for n_key in n_keys
+        ]
         label = short_method(method)
         axes[0].plot(ns, ece, marker="o", linewidth=1.8, color=color, label=label)
         axes[1].plot(ns, acc, marker="o", linewidth=1.8, color=color, label=label)
@@ -432,7 +470,9 @@ def plot_controlled_n(controlled: dict[str, Any], out: Path) -> None:
     plt.close(fig)
 
 
-def plot_word_accuracy(predictions_by_method: dict[str, Any], out: Path) -> tuple[str, str]:
+def plot_word_accuracy(
+    predictions_by_method: dict[str, Any], out: Path
+) -> tuple[str, str]:
     methods = [method for method in SELECTED_METHODS if method in predictions_by_method]
     per_method = {
         method: word_accuracy(predictions_by_method[method]["predictions"])
@@ -440,21 +480,44 @@ def plot_word_accuracy(predictions_by_method: dict[str, Any], out: Path) -> tupl
     }
     all_words = sorted({word for values in per_method.values() for word in values})
     word_mean = {
-        word: float(np.mean([per_method[method][word][2] for method in methods if word in per_method[method]]))
+        word: float(
+            np.mean(
+                [
+                    per_method[method][word][2]
+                    for method in methods
+                    if word in per_method[method]
+                ]
+            )
+        )
         for word in all_words
     }
     words = sorted(all_words, key=lambda word: word_mean[word], reverse=True)
-    matrix = np.array([[per_method[method][word][2] for method in methods] for word in words])
+    matrix = np.array(
+        [[per_method[method][word][2] for method in methods] for word in words]
+    )
 
     fig, ax = plt.subplots(figsize=(8.8, max(6.0, 0.34 * len(words) + 1.8)))
     im = ax.imshow(100.0 * matrix, cmap="YlGnBu", vmin=0, vmax=100, aspect="auto")
-    ax.set_xticks(np.arange(len(methods)), [short_method(method) for method in methods], rotation=30, ha="right")
+    ax.set_xticks(
+        np.arange(len(methods)),
+        [short_method(method) for method in methods],
+        rotation=30,
+        ha="right",
+    )
     ax.set_yticks(np.arange(len(words)), words)
     ax.set_title("Per-word accuracy by method")
     for i, word in enumerate(words):
         for j, method in enumerate(methods):
             value = 100.0 * matrix[i, j]
-            ax.text(j, i, f"{value:.0f}", ha="center", va="center", fontsize=7, color="black" if value < 72 else "white")
+            ax.text(
+                j,
+                i,
+                f"{value:.0f}",
+                ha="center",
+                va="center",
+                fontsize=7,
+                color="black" if value < 72 else "white",
+            )
     cbar = fig.colorbar(im, ax=ax, fraction=0.046, pad=0.04)
     cbar.set_label("accuracy")
     fig.tight_layout()
@@ -468,7 +531,9 @@ def plot_word_accuracy(predictions_by_method: dict[str, Any], out: Path) -> tupl
         reverse=True,
     )
     top = ", ".join(f"{word} {100 * value[2]:.0f}%" for word, value in word_rows[:4])
-    bottom = ", ".join(f"{word} {100 * value[2]:.0f}%" for word, value in word_rows[-4:])
+    bottom = ", ".join(
+        f"{word} {100 * value[2]:.0f}%" for word, value in word_rows[-4:]
+    )
     return top, bottom
 
 
@@ -530,7 +595,9 @@ def build_report(
     best_acc = by_metric["Accuracy"]["winner"]
     direct = comparison.get("direct", {})
     raw_mcmc_methods = [method for method in comparison if method.startswith("mcmc_t")]
-    worst_mcmc_ece = max((comparison[method]["ece"] for method in raw_mcmc_methods), default=math.nan)
+    worst_mcmc_ece = max(
+        (comparison[method]["ece"] for method in raw_mcmc_methods), default=math.nan
+    )
 
     image_rel = {
         name: path.relative_to(out_path.parent).as_posix()
@@ -568,7 +635,17 @@ def build_report(
     if controlled_rows:
         controlled_table = markdown_table(
             ["N", "samples", "best ECE", "best Brier", "best AUROC", "best accuracy"],
-            [[row["n"], row["samples"], row["ece"], row["brier"], row["auroc"], row["accuracy"]] for row in controlled_rows],
+            [
+                [
+                    row["n"],
+                    row["samples"],
+                    row["ece"],
+                    row["brier"],
+                    row["auroc"],
+                    row["accuracy"],
+                ]
+                for row in controlled_rows
+            ],
         )
 
     logprob = comparison.get("logprob_offset", {})
@@ -610,7 +687,7 @@ Config hash: `{config_hash}`
 
 ## Bottom line
 
-The latest run says the cleanest confidence signal is simple temperature bootstrap at T=1.0. It wins ECE, Brier, and NLL on the full 20-word run: ECE {100 * comparison[best_cal]['ece']:.1f}%, Brier {comparison[best_brier]['brier_score']:.3f}, NLL {comparison[best_nll]['nll']:.3f}. Accuracy is not the differentiator: the best accuracy method is {pretty_method(best_acc)} at {100 * comparison[best_acc]['accuracy']:.1f}%, while {pretty_method(best_cal)} is {100 * comparison[best_cal]['accuracy']:.1f}%.
+The latest run says the cleanest confidence signal is simple temperature bootstrap at T=1.0. It wins ECE, Brier, and NLL on the full 20-word run: ECE {100 * comparison[best_cal]["ece"]:.1f}%, Brier {comparison[best_brier]["brier_score"]:.3f}, NLL {comparison[best_nll]["nll"]:.3f}. Accuracy is not the differentiator: the best accuracy method is {pretty_method(best_acc)} at {100 * comparison[best_acc]["accuracy"]:.1f}%, while {pretty_method(best_cal)} is {100 * comparison[best_cal]["accuracy"]:.1f}%.
 
 {logprob_sentence}
 
@@ -664,8 +741,18 @@ The calibrated method is not uniformly mediocre: some words are easy across meth
 
 def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__)
-    parser.add_argument("--run-dir", type=Path, default=None, help="Run directory containing comparison_summary.json")
-    parser.add_argument("--output-dir", type=Path, default=FINDINGS_ROOT, help="Directory for the report")
+    parser.add_argument(
+        "--run-dir",
+        type=Path,
+        default=None,
+        help="Run directory containing comparison_summary.json",
+    )
+    parser.add_argument(
+        "--output-dir",
+        type=Path,
+        default=FINDINGS_ROOT,
+        help="Directory for the report",
+    )
     args = parser.parse_args()
 
     run_dir = args.run_dir.resolve() if args.run_dir else discover_latest_run()
@@ -696,11 +783,15 @@ def main() -> None:
         plot_controlled_n(controlled, image_paths["controlled_n"])
     else:
         fig, ax = plt.subplots(figsize=(6, 3))
-        ax.text(0.5, 0.5, "No controlled_n_summary.json found", ha="center", va="center")
+        ax.text(
+            0.5, 0.5, "No controlled_n_summary.json found", ha="center", va="center"
+        )
         ax.axis("off")
         fig.savefig(image_paths["controlled_n"], bbox_inches="tight")
         plt.close(fig)
-    word_top, word_bottom = plot_word_accuracy(predictions_by_method, image_paths["word_accuracy"])
+    word_top, word_bottom = plot_word_accuracy(
+        predictions_by_method, image_paths["word_accuracy"]
+    )
 
     build_report(
         run_dir=run_dir,

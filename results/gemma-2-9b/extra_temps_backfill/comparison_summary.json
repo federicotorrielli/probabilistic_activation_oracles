@@ -1,0 +1,30 @@
+{
+  "bootstrap_t1p75": {
+    "accuracy": 0.2015,
+    "ece": 0.03967499999999998,
+    "brier_score": 0.14244791666666667,
+    "nll": 0.4496227346078322,
+    "auroc": 0.7433034161274612,
+    "conf_given_correct": 0.2923904052936311,
+    "conf_given_wrong": 0.20341264871634313,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "bootstrap_t2p0": {
+    "accuracy": 0.2045,
+    "ece": 0.05015833333333331,
+    "brier_score": 0.14505708333333334,
+    "nll": 0.4552097380655968,
+    "auroc": 0.7377771528280427,
+    "conf_given_correct": 0.25798696006519967,
+    "conf_given_wrong": 0.18137439765346744,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  }
+}

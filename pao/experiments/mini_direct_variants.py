@@ -404,7 +404,9 @@ def _ece(confs: list[float], correct: list[bool], n_bins: int = 10) -> float:
 def _brier(confs: list[float], correct: list[bool]) -> float:
     if not confs:
         return float("nan")
-    return sum((c - (1.0 if y else 0.0)) ** 2 for c, y in zip(confs, correct)) / len(confs)
+    return sum((c - (1.0 if y else 0.0)) ** 2 for c, y in zip(confs, correct)) / len(
+        confs
+    )
 
 
 def _auroc(confs: list[float], correct: list[bool]) -> float:

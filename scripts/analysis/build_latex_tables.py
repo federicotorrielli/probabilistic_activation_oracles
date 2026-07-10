@@ -4,6 +4,7 @@ Outputs to stdout:
   * Post-hoc calibration table (ECE pre/post) for both splits, both models
   * Bootstrap CI annotations for the main scorecard rows
 """
+
 from __future__ import annotations
 
 import json
@@ -53,8 +54,12 @@ def calibration_table():
         out.append(r"\small \setlength{\tabcolsep}{4pt}")
         out.append(r"\begin{tabular}{lrrrrr|rrrrr}")
         out.append(r"\toprule")
-        out.append(r" & \multicolumn{5}{c|}{Word-disjoint split} & \multicolumn{5}{c}{Random 50/50 split} \\")
-        out.append(r"Method & Uncal & Temp & Platt & Iso & Beta & Uncal & Temp & Platt & Iso & Beta \\")
+        out.append(
+            r" & \multicolumn{5}{c|}{Word-disjoint split} & \multicolumn{5}{c}{Random 50/50 split} \\"
+        )
+        out.append(
+            r"Method & Uncal & Temp & Platt & Iso & Beta & Uncal & Temp & Platt & Iso & Beta \\"
+        )
         out.append(r"\midrule")
         for m in methods_to_show:
             if m not in d_word:
@@ -197,11 +202,16 @@ def calibration_table_one(model: str) -> str:
 
 if __name__ == "__main__":
     import sys
+
     if len(sys.argv) > 1 and sys.argv[1] == "--write":
         # Write standalone .tex fragments expected by acl_latex.tex \input{}
         out_dir = Path("paper")
-        (out_dir / "postcal-qwen3-8b-tbl.tex").write_text(calibration_table_one("qwen3-8b") + "\n")
-        (out_dir / "postcal-qwen3-6-27b-tbl.tex").write_text(calibration_table_one("qwen3.6-27b") + "\n")
+        (out_dir / "postcal-qwen3-8b-tbl.tex").write_text(
+            calibration_table_one("qwen3-8b") + "\n"
+        )
+        (out_dir / "postcal-qwen3-6-27b-tbl.tex").write_text(
+            calibration_table_one("qwen3.6-27b") + "\n"
+        )
         (out_dir / "bootstrap-cis-tbl.tex").write_text(ci_table() + "\n")
         print("wrote 3 .tex fragments under paper/")
     else:

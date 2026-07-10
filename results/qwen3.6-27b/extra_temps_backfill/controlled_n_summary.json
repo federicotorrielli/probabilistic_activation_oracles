@@ -1,0 +1,175 @@
+{
+  "N2": {
+    "target_words": [
+      "snow",
+      "ship"
+    ],
+    "methods": {
+      "bootstrap_t1p75": {
+        "accuracy": 0.17666666666666667,
+        "ece": 0.07325,
+        "brier_score": 0.12795416666666667,
+        "nll": 0.41726788342270077,
+        "auroc": 0.7387327171339088,
+        "conf_given_correct": 0.2839622641509434,
+        "conf_given_wrong": 0.1938259109311741,
+        "n_samples": 600,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      },
+      "bootstrap_t2p0": {
+        "accuracy": 0.14333333333333334,
+        "ece": 0.06649999999999998,
+        "brier_score": 0.11296666666666667,
+        "nll": 0.3802373912596304,
+        "auroc": 0.7355103610532984,
+        "conf_given_correct": 0.2575581395348837,
+        "conf_given_wrong": 0.1827821011673152,
+        "n_samples": 600,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N5": {
+    "target_words": [
+      "flame",
+      "green",
+      "leaf",
+      "rock",
+      "snow"
+    ],
+    "methods": {
+      "bootstrap_t1p75": {
+        "accuracy": 0.184,
+        "ece": 0.07366666666666664,
+        "brier_score": 0.13103333333333333,
+        "nll": 0.42503315263501773,
+        "auroc": 0.7584763071895425,
+        "conf_given_correct": 0.29728260869565215,
+        "conf_given_wrong": 0.20355392156862745,
+        "n_samples": 1500,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      },
+      "bootstrap_t2p0": {
+        "accuracy": 0.16466666666666666,
+        "ece": 0.06146666666666667,
+        "brier_score": 0.12419333333333335,
+        "nll": 0.408877083421523,
+        "auroc": 0.7258676342769257,
+        "conf_given_correct": 0.26497975708502025,
+        "conf_given_wrong": 0.18934557063048682,
+        "n_samples": 1500,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N10": {
+    "target_words": [
+      "gold",
+      "song",
+      "chair",
+      "wave",
+      "ship",
+      "blue",
+      "snow",
+      "smile",
+      "flame",
+      "flag"
+    ],
+    "methods": {
+      "bootstrap_t1p75": {
+        "accuracy": 0.18033333333333335,
+        "ece": 0.1086,
+        "brier_score": 0.12055833333333334,
+        "nll": 0.4011752177582653,
+        "auroc": 0.7995262790353291,
+        "conf_given_correct": 0.3347504621072089,
+        "conf_given_wrong": 0.20170801138674258,
+        "n_samples": 3000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      },
+      "bootstrap_t2p0": {
+        "accuracy": 0.16166666666666665,
+        "ece": 0.08715000000000003,
+        "brier_score": 0.11616749999999999,
+        "nll": 0.3888620462208501,
+        "auroc": 0.7771088930335512,
+        "conf_given_correct": 0.2958762886597938,
+        "conf_given_wrong": 0.18892644135188866,
+        "n_samples": 3000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  },
+  "N20": {
+    "target_words": [
+      "ship",
+      "gold",
+      "jump",
+      "chair",
+      "green",
+      "book",
+      "flag",
+      "rock",
+      "smile",
+      "song",
+      "leaf",
+      "moon",
+      "clock",
+      "wave",
+      "blue",
+      "dance",
+      "cloud",
+      "snow",
+      "flame",
+      "salt"
+    ],
+    "methods": {
+      "bootstrap_t1p75": {
+        "accuracy": 0.18783333333333332,
+        "ece": 0.09665,
+        "brier_score": 0.12545166666666668,
+        "nll": 0.4118259101562549,
+        "auroc": 0.8006471747060337,
+        "conf_given_correct": 0.32834960070984914,
+        "conf_given_wrong": 0.2027601067104453,
+        "n_samples": 6000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      },
+      "bootstrap_t2p0": {
+        "accuracy": 0.172,
+        "ece": 0.07679166666666667,
+        "brier_score": 0.12235458333333334,
+        "nll": 0.40367722110532417,
+        "auroc": 0.77020235710095,
+        "conf_given_correct": 0.2896802325581395,
+        "conf_given_wrong": 0.18947262479871174,
+        "n_samples": 6000,
+        "metadata": {
+          "flag_counts": {},
+          "categorical_counts": {}
+        }
+      }
+    }
+  }
+}

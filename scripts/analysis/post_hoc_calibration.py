@@ -10,6 +10,7 @@ Two splits are reported side by side:
 
 Output: results/postcal/{model}/{split}.json summarising per-method metrics.
 """
+
 from __future__ import annotations
 
 import json
@@ -253,7 +254,9 @@ def main():
     summary = {}
     for model, root in MODELS.items():
         for split_name, splitter in SPLITS.items():
-            rng_split = np.random.default_rng({"word_disjoint": 1, "random_5050": 2}[split_name])
+            rng_split = np.random.default_rng(
+                {"word_disjoint": 1, "random_5050": 2}[split_name]
+            )
             per_method = {}
             for fname in METHOD_FILES:
                 fp = root / fname
@@ -271,7 +274,9 @@ def main():
             with open(out_path / f"{split_name}.json", "w") as f:
                 json.dump(per_method, f, indent=2)
             summary[(model, split_name)] = out_path / f"{split_name}.json"
-            print(f"wrote {out_path / (split_name + '.json')}  ({len(per_method)} methods)")
+            print(
+                f"wrote {out_path / (split_name + '.json')}  ({len(per_method)} methods)"
+            )
     print()
     print("Summary written to results/postcal/")
 

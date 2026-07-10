@@ -96,7 +96,9 @@ def _pad_token_id(model, tokenizer):
 
 
 @torch.no_grad()
-def _generate_text(model, tokenizer, device, prompt: str, max_new_tokens: int = 60) -> str:
+def _generate_text(
+    model, tokenizer, device, prompt: str, max_new_tokens: int = 60
+) -> str:
     formatted = [{"role": "user", "content": prompt}]
     inputs = encode_messages(
         tokenizer=tokenizer,
@@ -117,7 +119,9 @@ def _generate_text(model, tokenizer, device, prompt: str, max_new_tokens: int = 
     return tokenizer.decode(gen, skip_special_tokens=True)
 
 
-def check_activation_contract(model, tokenizer, device, cfg: ModelConfig, context_prompt: str) -> bool:
+def check_activation_contract(
+    model, tokenizer, device, cfg: ModelConfig, context_prompt: str
+) -> bool:
     section("CHECK 1: activation-collection contract")
 
     target_word = TABOO_WORDS[0]
@@ -161,7 +165,11 @@ def check_activation_contract(model, tokenizer, device, cfg: ModelConfig, contex
         ok("activations are prompt-only (shape matches unpadded prompt length)")
 
     seg_start = max(0, prompt_len + cfg.segment_start_idx)
-    seg_end = prompt_len + cfg.segment_end_idx if cfg.segment_end_idx <= 0 else cfg.segment_end_idx
+    seg_end = (
+        prompt_len + cfg.segment_end_idx
+        if cfg.segment_end_idx <= 0
+        else cfg.segment_end_idx
+    )
     expected_k = seg_end - seg_start
     print(f"  segment positions: [{seg_start}, {seg_end}) -> K={expected_k}")
     if expected_k != abs(cfg.segment_start_idx):
@@ -191,7 +199,9 @@ def check_activation_contract(model, tokenizer, device, cfg: ModelConfig, contex
     else:
         ok(f"sampler carries K={k_vectors} steering vectors")
     if hidden_dim != expected_hidden_dim:
-        fail(f"steering vector D={hidden_dim} != model hidden_size {expected_hidden_dim}")
+        fail(
+            f"steering vector D={hidden_dim} != model hidden_size {expected_hidden_dim}"
+        )
         passed = False
     else:
         ok(f"steering vector D={hidden_dim} matches model hidden_size")
@@ -234,7 +244,9 @@ def check_activation_contract(model, tokenizer, device, cfg: ModelConfig, contex
     return passed
 
 
-def check_taboo_hiding(model, tokenizer, device, cfg: ModelConfig, words: list[str]) -> bool:
+def check_taboo_hiding(
+    model, tokenizer, device, cfg: ModelConfig, words: list[str]
+) -> bool:
     section(f"CHECK 2: taboo hiding behaviour on {len(words)} target LoRA(s)")
 
     passed = True
@@ -247,16 +259,22 @@ def check_taboo_hiding(model, tokenizer, device, cfg: ModelConfig, words: list[s
         target_adapter = load_lora_adapter(model, target_path)
 
         model.disable_adapters()
-        base_outs = [_generate_text(model, tokenizer, device, probe) for probe in DIRECT_PROBES]
+        base_outs = [
+            _generate_text(model, tokenizer, device, probe) for probe in DIRECT_PROBES
+        ]
         model.enable_adapters()
 
         model.set_adapter(target_adapter)
-        lora_outs = [_generate_text(model, tokenizer, device, probe) for probe in DIRECT_PROBES]
+        lora_outs = [
+            _generate_text(model, tokenizer, device, probe) for probe in DIRECT_PROBES
+        ]
 
         differ_any = False
         leak_count = 0
         word_leaks: list[tuple[str, str]] = []
-        for probe, base_text, lora_text in zip(DIRECT_PROBES, base_outs, lora_outs, strict=True):
+        for probe, base_text, lora_text in zip(
+            DIRECT_PROBES, base_outs, lora_outs, strict=True
+        ):
             short_probe = probe[:50]
             print(f"    probe: {short_probe}")
             print(f"      base: {base_text[:100]!r}")
@@ -287,7 +305,9 @@ def check_taboo_hiding(model, tokenizer, device, cfg: ModelConfig, words: list[s
                 print(f"      soft-leak probe={probe!r}")
                 print(f"                text={text[:160]!r}")
         else:
-            ok(f"target LoRA for {word!r} never leaks the word across {len(DIRECT_PROBES)} probes")
+            ok(
+                f"target LoRA for {word!r} never leaks the word across {len(DIRECT_PROBES)} probes"
+            )
 
         if not differ_any:
             warn(
@@ -350,7 +370,15 @@ def check_oracle_accuracy(
                 is_correct = extracted == word
                 correct += int(is_correct)
                 total += 1
-                rows.append((word, verbalizer_prompt[:40], context_prompt[:40], pred_text[:40], is_correct))
+                rows.append(
+                    (
+                        word,
+                        verbalizer_prompt[:40],
+                        context_prompt[:40],
+                        pred_text[:40],
+                        is_correct,
+                    )
+                )
 
     print()
     for word, verbalizer_prompt, context_prompt, pred_text, ok_flag in rows:
@@ -365,7 +393,9 @@ def check_oracle_accuracy(
     if passed:
         ok(f"oracle accuracy {accuracy:.2%} >= 50% on the small subset")
     else:
-        fail(f"oracle accuracy {accuracy:.2%} < 50% - inspect predictions before full run")
+        fail(
+            f"oracle accuracy {accuracy:.2%} < 50% - inspect predictions before full run"
+        )
     return passed
 
 
@@ -398,7 +428,9 @@ def normalize_adapter_module_name(key: str) -> str:
 
 def load_adapter_report(adapter_repo: str) -> tuple[dict, set[str], dict[str, int]]:
     config_path = hf_hub_download(repo_id=adapter_repo, filename="adapter_config.json")
-    tensor_path = hf_hub_download(repo_id=adapter_repo, filename="adapter_model.safetensors")
+    tensor_path = hf_hub_download(
+        repo_id=adapter_repo, filename="adapter_model.safetensors"
+    )
 
     with open(config_path) as f:
         adapter_config = json.load(f)
@@ -472,7 +504,11 @@ def _first_subword_id(tokenizer, word: str) -> int:
 
 def _segment_positions(seq_len: int, cfg: ModelConfig) -> list[int]:
     start = max(0, seq_len + cfg.segment_start_idx)
-    end = seq_len + cfg.segment_end_idx if cfg.segment_end_idx <= 0 else cfg.segment_end_idx
+    end = (
+        seq_len + cfg.segment_end_idx
+        if cfg.segment_end_idx <= 0
+        else cfg.segment_end_idx
+    )
     return list(range(start, end))
 
 
@@ -516,7 +552,9 @@ def trace_candidate_lens(
 
     saved_logits: list[list] = []
     with nn_model.trace() as tracer:
-        with tracer.invoke({"input_ids": input_ids_t, "attention_mask": attention_mask}):
+        with tracer.invoke(
+            {"input_ids": input_ids_t, "attention_mask": attention_mask}
+        ):
             for layer_idx in range(num_layers):
                 raw_out = layers_ns[layer_idx].output
                 hs = raw_out[0] if layer_output_is_tuple else raw_out
@@ -535,7 +573,9 @@ def trace_candidate_lens(
             probs = F.softmax(logits[0].float(), dim=-1)
             order = torch.argsort(probs, descending=True)
             top_idx = int(order[0].item())
-            target_rank = int((order == target_idx).nonzero(as_tuple=False)[0].item()) + 1
+            target_rank = (
+                int((order == target_idx).nonzero(as_tuple=False)[0].item()) + 1
+            )
             row = PositionSummary(
                 layer=layer_idx,
                 position=position,
@@ -566,7 +606,9 @@ def trace_candidate_lens(
     active_adapters = getattr(model, "active_adapters", [])
     active = active_adapters() if callable(active_adapters) else active_adapters
     adapter_name = ",".join(active) if active else "base"
-    return AdapterSummary(adapter_name=adapter_name, best=best, per_layer_best=per_layer_best)
+    return AdapterSummary(
+        adapter_name=adapter_name, best=best, per_layer_best=per_layer_best
+    )
 
 
 @dataclass
@@ -622,7 +664,9 @@ def trace_candidate_matrix(
 
     saved_logits: list[list] = []
     with nn_model.trace() as tracer:
-        with tracer.invoke({"input_ids": input_ids_t, "attention_mask": attention_mask}):
+        with tracer.invoke(
+            {"input_ids": input_ids_t, "attention_mask": attention_mask}
+        ):
             for layer_idx in range(num_layers):
                 raw_out = layers_ns[layer_idx].output
                 hs = raw_out[0] if layer_output_is_tuple else raw_out
@@ -639,7 +683,9 @@ def trace_candidate_matrix(
             for position, logits in zip(segment_positions, layer_rows, strict=True):
                 probs = F.softmax(logits[0].float(), dim=-1)
                 order = torch.argsort(probs, descending=True)
-                target_rank = int((order == word_idx).nonzero(as_tuple=False)[0].item()) + 1
+                target_rank = (
+                    int((order == word_idx).nonzero(as_tuple=False)[0].item()) + 1
+                )
                 top_idx = int(order[0].item())
                 row = WordBest(
                     word=word,
@@ -681,7 +727,9 @@ def trace_single_hidden(
     input_ids_t = torch.tensor([input_ids], dtype=torch.long, device=device)
     attention_mask = torch.ones_like(input_ids_t, dtype=torch.long)
     with nn_model.trace() as tracer:
-        with tracer.invoke({"input_ids": input_ids_t, "attention_mask": attention_mask}):
+        with tracer.invoke(
+            {"input_ids": input_ids_t, "attention_mask": attention_mask}
+        ):
             raw_out = layers_ns[layer_idx].output
             hs = raw_out[0] if layer_output_is_tuple else raw_out
             out = hs[:, position, :].save()
@@ -715,16 +763,26 @@ def patch_and_read(
         return head_ns(norm_ns(last_hs[:, patch_position, :]))[:, candidate_ids]
 
     with nn_model.trace() as tracer:
-        with tracer.invoke({"input_ids": input_ids_t, "attention_mask": attention_mask}):
+        with tracer.invoke(
+            {"input_ids": input_ids_t, "attention_mask": attention_mask}
+        ):
             before_logits = read_final_logits().save()
     before_probs = F.softmax(before_logits[0].float(), dim=-1)
     before_order = torch.argsort(before_probs, descending=True)
-    before_rank = int((before_order == source_idx).nonzero(as_tuple=False)[0].item()) + 1
+    before_rank = (
+        int((before_order == source_idx).nonzero(as_tuple=False)[0].item()) + 1
+    )
     before_top_idx = int(before_order[0].item())
 
     with nn_model.trace() as tracer:
-        with tracer.invoke({"input_ids": input_ids_t, "attention_mask": attention_mask}):
-            target_ref = layers_ns[patch_layer].output[0] if layer_output_is_tuple else layers_ns[patch_layer].output
+        with tracer.invoke(
+            {"input_ids": input_ids_t, "attention_mask": attention_mask}
+        ):
+            target_ref = (
+                layers_ns[patch_layer].output[0]
+                if layer_output_is_tuple
+                else layers_ns[patch_layer].output
+            )
             target_ref[:, patch_position, :] = source_hidden
             after_logits = read_final_logits().save()
     after_probs = F.softmax(after_logits[0].float(), dim=-1)
@@ -812,7 +870,8 @@ def build_oracle_bundle(
     steering_vectors = acts_BLD[0, target_positions_rel, :].detach().clone()
 
     oracle_user_content = (
-        get_introspection_prefix(act_layer, len(target_positions_rel)) + verbalizer_prompt
+        get_introspection_prefix(act_layer, len(target_positions_rel))
+        + verbalizer_prompt
     )
     oracle_messages = [{"role": "user", "content": oracle_user_content}]
     oracle_ids = tokenizer.apply_chat_template(
@@ -824,7 +883,9 @@ def build_oracle_bundle(
         padding=False,
         enable_thinking=False,
     )
-    if not isinstance(oracle_ids, list) or (oracle_ids and not isinstance(oracle_ids[0], int)):
+    if not isinstance(oracle_ids, list) or (
+        oracle_ids and not isinstance(oracle_ids[0], int)
+    ):
         raise TypeError(
             f"Expected flat token-id list from apply_chat_template, got {type(oracle_ids).__name__}"
         )
@@ -874,7 +935,9 @@ def score_candidate_words(
     candidate_words: list[str],
     coefficient: float,
 ) -> list[tuple[str, float, int, list[int]]]:
-    candidate_token_ids = [tokenizer.encode(word, add_special_tokens=False) for word in candidate_words]
+    candidate_token_ids = [
+        tokenizer.encode(word, add_special_tokens=False) for word in candidate_words
+    ]
     if any(len(ids) == 0 for ids in candidate_token_ids):
         raise ValueError("Empty candidate tokenization encountered")
 
@@ -963,7 +1026,9 @@ def run_case(
         coefficient=coefficient,
     )
     target_row = next(row for row in scores if row[0] == target_word)
-    target_rank = next(i for i, row in enumerate(scores, start=1) if row[0] == target_word)
+    target_rank = next(
+        i for i, row in enumerate(scores, start=1) if row[0] == target_word
+    )
     top_word, top_score, _, _ = scores[0]
     return CaseResult(
         mode=mode,
@@ -1019,7 +1084,9 @@ def run_logit_lens(
 
     with sampler_context:
         with nn_model.trace() as tracer:
-            with tracer.invoke({"input_ids": input_ids, "attention_mask": attention_mask}):
+            with tracer.invoke(
+                {"input_ids": input_ids, "attention_mask": attention_mask}
+            ):
                 for layer_idx in range(num_layers):
                     raw_out = layers_ns[layer_idx].output
                     hs = raw_out[0] if layer_output_is_tuple else raw_out
@@ -1039,12 +1106,16 @@ def run_logit_lens(
             top_vals, top_idx = probs.topk(topk)
 
             decoded = []
-            for probability, token_id in zip(top_vals.tolist(), top_idx.tolist(), strict=True):
+            for probability, token_id in zip(
+                top_vals.tolist(), top_idx.tolist(), strict=True
+            ):
                 decoded.append((tokenizer.decode([token_id]), probability))
             per_layer_top_tokens.append(decoded)
 
             sorted_ids = torch.argsort(probs, descending=True)
-            rank = int((sorted_ids == target_token_id).nonzero(as_tuple=False)[0].item())
+            rank = int(
+                (sorted_ids == target_token_id).nonzero(as_tuple=False)[0].item()
+            )
             target_rank_per_layer.append(rank)
             target_prob_per_layer.append(float(probs[target_token_id].item()))
 
