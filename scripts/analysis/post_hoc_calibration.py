@@ -33,29 +33,28 @@ EPS = 1e-6
 RESULTS_ROOT = Path("results")
 OUT_ROOT = Path("results/postcal")
 
+# Main run dir plus backfill dirs (forced choice, extra temperatures);
+# every *_results.json found in these dirs gets calibrated.
 MODELS = {
-    "qwen3-8b": Path("results/qwen3-8b/run_3"),
-    "qwen3.6-27b": Path("results/qwen3.6-27b/taboo_uq"),
+    "qwen3-8b": [
+        Path("results/qwen3-8b/run_3"),
+        Path("results/qwen3-8b/forced_choice_backfill"),
+    ],
+    "qwen3.6-27b": [
+        Path("results/qwen3.6-27b/taboo_uq"),
+        Path("results/qwen3.6-27b/forced_choice_backfill"),
+        Path("results/qwen3.6-27b/extra_temps_backfill"),
+    ],
+    "gemma-2-9b": [
+        Path("results/gemma-2-9b/taboo_uq"),
+        Path("results/gemma-2-9b/forced_choice_backfill"),
+        Path("results/gemma-2-9b/extra_temps_backfill"),
+    ],
+    "gemma-3-27b": [
+        Path("results/gemma-3-27b/taboo_uq"),
+        Path("results/gemma-3-27b/forced_choice_backfill"),
+    ],
 }
-
-METHOD_FILES = [
-    "logprob_offset_results.json",
-    "logprob_no_offset_results.json",
-    "bootstrap_t0p3_results.json",
-    "bootstrap_t0p5_results.json",
-    "bootstrap_t0p7_results.json",
-    "bootstrap_t1p0_results.json",
-    "bootstrap_t1p3_results.json",
-    "bootstrap_t1p5_results.json",
-    "direct_results.json",
-    "mcmc_t0p125_results.json",
-    "mcmc_t0p25_results.json",
-    "mcmc_t0p5_results.json",
-    "mcmc_agreement_t0p125_results.json",
-    "mcmc_agreement_t0p25_results.json",
-    "mcmc_agreement_t0p5_results.json",
-    "sensitivity_results.json",
-]
 
 
 def _clip(p: np.ndarray) -> np.ndarray:
@@ -194,8 +193,14 @@ def load_predictions(path: Path):
     return rows
 
 
-def split_word_disjoint(rows, rng):
+# Splits are seeded per split kind, so every method within a model is fit and
+# evaluated on the identical split; method differences are then not confounded
+# by split randomness.
+
+
+def split_word_disjoint(rows):
     words = sorted({r["word"] for r in rows})
+    rng = np.random.default_rng(1)
     rng.shuffle(words)
     fit_words = set(words[: len(words) // 2])
     fit = [r for r in rows if r["word"] in fit_words]
@@ -203,9 +208,9 @@ def split_word_disjoint(rows, rng):
     return fit, test
 
 
-def split_random(rows, rng):
-    idx = np.arange(len(rows))
-    rng.shuffle(idx)
+def split_random(rows):
+    rng = np.random.default_rng(2)
+    idx = rng.permutation(len(rows))
     half = len(idx) // 2
     fit = [rows[i] for i in idx[:half]]
     test = [rows[i] for i in idx[half:]]
@@ -250,24 +255,17 @@ def evaluate_row(rows, fit_rows, test_rows):
 
 def main():
     OUT_ROOT.mkdir(parents=True, exist_ok=True)
-    rng = np.random.default_rng(0)
     summary = {}
-    for model, root in MODELS.items():
+    for model, roots in MODELS.items():
+        files = sorted(fp for root in roots for fp in root.glob("*_results.json"))
         for split_name, splitter in SPLITS.items():
-            rng_split = np.random.default_rng(
-                {"word_disjoint": 1, "random_5050": 2}[split_name]
-            )
             per_method = {}
-            for fname in METHOD_FILES:
-                fp = root / fname
-                if not fp.exists():
-                    print(f"  skip (missing): {fp}")
-                    continue
+            for fp in files:
                 rows = load_predictions(fp)
                 if not rows:
                     continue
-                method_key = fname.replace("_results.json", "")
-                fit_rows, test_rows = splitter(rows, rng_split)
+                method_key = fp.name.replace("_results.json", "")
+                fit_rows, test_rows = splitter(rows)
                 per_method[method_key] = evaluate_row(rows, fit_rows, test_rows)
             out_path = OUT_ROOT / model
             out_path.mkdir(parents=True, exist_ok=True)

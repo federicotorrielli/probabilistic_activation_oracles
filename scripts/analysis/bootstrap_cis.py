@@ -22,29 +22,28 @@ B = 1000  # bootstrap resamples
 ROOT = Path("results")
 OUT = Path("results/bootstrap_cis")
 
+# Main run dir plus backfill dirs (forced choice, extra temperatures);
+# every *_results.json found in these dirs gets a CI row.
 MODELS = {
-    "qwen3-8b": Path("results/qwen3-8b/run_3"),
-    "qwen3.6-27b": Path("results/qwen3.6-27b/taboo_uq"),
+    "qwen3-8b": [
+        Path("results/qwen3-8b/run_3"),
+        Path("results/qwen3-8b/forced_choice_backfill"),
+    ],
+    "qwen3.6-27b": [
+        Path("results/qwen3.6-27b/taboo_uq"),
+        Path("results/qwen3.6-27b/forced_choice_backfill"),
+        Path("results/qwen3.6-27b/extra_temps_backfill"),
+    ],
+    "gemma-2-9b": [
+        Path("results/gemma-2-9b/taboo_uq"),
+        Path("results/gemma-2-9b/forced_choice_backfill"),
+        Path("results/gemma-2-9b/extra_temps_backfill"),
+    ],
+    "gemma-3-27b": [
+        Path("results/gemma-3-27b/taboo_uq"),
+        Path("results/gemma-3-27b/forced_choice_backfill"),
+    ],
 }
-
-METHOD_FILES = [
-    "logprob_offset_results.json",
-    "logprob_no_offset_results.json",
-    "bootstrap_t0p3_results.json",
-    "bootstrap_t0p5_results.json",
-    "bootstrap_t0p7_results.json",
-    "bootstrap_t1p0_results.json",
-    "bootstrap_t1p3_results.json",
-    "bootstrap_t1p5_results.json",
-    "direct_results.json",
-    "mcmc_t0p125_results.json",
-    "mcmc_t0p25_results.json",
-    "mcmc_t0p5_results.json",
-    "mcmc_agreement_t0p125_results.json",
-    "mcmc_agreement_t0p25_results.json",
-    "mcmc_agreement_t0p5_results.json",
-    "sensitivity_results.json",
-]
 
 
 def load(path: Path):
@@ -103,12 +102,11 @@ def bootstrap_metrics(confs, correct, B=B, seed=0):
 
 def main():
     OUT.mkdir(parents=True, exist_ok=True)
-    for model, root in MODELS.items():
+    for model, roots in MODELS.items():
         out = {}
-        for fname in METHOD_FILES:
-            fp = root / fname
-            if not fp.exists():
-                continue
+        files = sorted(fp for root in roots for fp in root.glob("*_results.json"))
+        for fp in files:
+            fname = fp.name
             confs, correct = load(fp)
             if len(confs) == 0:
                 continue

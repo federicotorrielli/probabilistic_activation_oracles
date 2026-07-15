@@ -19,6 +19,14 @@
   --rose: #dc2626;
   --grad-a: #4338ca;
   --grad-b: #c2410c;
+  /* Four-oracle categorical palette (validated, dataviz reference order) */
+  --c-q8:  #2a78d6;
+  --c-q27: #008300;
+  --c-g2:  #e87ba4;
+  --c-g3:  #eda100;
+  /* Shared by .plot and .axis so tracks and ticks align */
+  --plot-left: 290px;  /* method-label column width */
+  --plot-right: 130px; /* badge column width */
 }
 @font-face {
   font-family: "InterVariable";
@@ -202,8 +210,10 @@ html, body {
   display: inline-block; width: 11px; height: 11px; border-radius: 50%;
   margin-right: 7px; vertical-align: -1px;
 }
-.lg-dot.b8 { background: var(--indigo); }
-.lg-dot.b27 { background: var(--amber); }
+.lg-dot.q8  { background: var(--c-q8); }
+.lg-dot.q27 { background: var(--c-q27); }
+.lg-dot.g2  { background: var(--c-g2); }
+.lg-dot.g3  { background: var(--c-g3); }
 .legend .lg-zone {
   display: inline-block; width: 24px; height: 11px;
   background: #d0eccf; border-radius: 3px; margin-right: 7px;
@@ -212,8 +222,6 @@ html, body {
 
 .plot {
   position: relative;
-  --plot-left: 290px;  /* method-label column width */
-  --plot-right: 130px; /* badge column width */
   --x0: var(--plot-left);
   --x1: calc(100% - var(--plot-right));
   --y-row: 46px;
@@ -265,29 +273,29 @@ html, body {
 }
 .connector {
   position: absolute; top: 50%; height: 2px;
-  background: linear-gradient(90deg, var(--indigo) 0%, var(--amber) 100%);
+  background: var(--slate);
   transform: translateY(-50%);
-  opacity: 0.55;
+  opacity: 0.30;
   border-radius: 2px;
 }
 .dot {
   position: absolute; top: 50%; transform: translate(-50%, -50%);
-  width: 14px; height: 14px; border-radius: 50%;
+  width: 13px; height: 13px; border-radius: 50%;
   border: 2px solid white;
+  box-shadow: 0 2px 8px -2px rgba(12,13,16,0.45);
 }
-.dot.b8  { background: var(--indigo);
-           box-shadow: 0 2px 8px -2px rgba(79,70,229,0.55); }
-.dot.b27 { background: var(--amber);
-           box-shadow: 0 2px 8px -2px rgba(217,119,6,0.55); }
+.dot.q8  { background: var(--c-q8); }
+.dot.q27 { background: var(--c-q27); }
+.dot.g2  { background: var(--c-g2); }
+.dot.g3  { background: var(--c-g3); }
 
 .val {
   position: absolute; top: 50%; transform: translate(-50%, -50%);
   font-size: 12px; font-weight: 700;
   font-variant-numeric: tabular-nums;
   white-space: nowrap;
+  color: var(--slate);
 }
-.val.b8  { color: var(--indigo); }
-.val.b27 { color: var(--amber); }
 
 .row .badge-col { display: flex; align-items: center; justify-content: flex-end; }
 .badge {
@@ -456,9 +464,9 @@ html, body {
   </div>
 
   <div class="tagline">
-    <span class="em">An AI reads another AI’s hidden thoughts</span> — and decodes an answer.
+    <span class="em">An AI reads another AI’s hidden thoughts</span> and decodes an answer.
     <span class="em">But how confident is the read?</span>
-    Six methods, on two oracles.
+    Eight confidence readouts, on four oracles.
   </div>
 
   <div class="divider"></div>
@@ -467,8 +475,10 @@ html, body {
   <div class="bottom-header">
     <div class="title">Calibration error on the secret-word task</div>
     <div class="legend">
-      <span><span class="lg-dot b8"></span>Qwen3-8B oracle</span>
-      <span><span class="lg-dot b27"></span>Qwen3.6-27B oracle</span>
+      <span><span class="lg-dot q8"></span>Qwen3-8B</span>
+      <span><span class="lg-dot q27"></span>Qwen3.6-27B</span>
+      <span><span class="lg-dot g2"></span>Gemma-2-9B</span>
+      <span><span class="lg-dot g3"></span>Gemma-3-27B</span>
       <span><span class="lg-zone"></span>well-calibrated (ECE ≤ 0.10)</span>
     </div>
   </div>
@@ -490,20 +500,28 @@ html, body {
 
 <script>
 // ---------- DATA ----------
+// ECE per oracle, from results/*/comparison_summary.json.
+// Bootstrap uses the ECE-optimal temperature of each oracle's grid
+// (T=1.0, 2.0, 1.75, 1.3); every other row is a single configuration.
 const methods = [
-  {name: "Bootstrap",        gloss: "sample 20 answers; agreement = confidence",
-   e8: 0.0570, e27: 0.1032, badge: "win",  tag: "est", verdict: "best on both"},
+  {name: "Bootstrap",        gloss: "20 samples at tuned T; agreement = confidence",
+   e: [0.0570, 0.0768, 0.0397, 0.1170], badge: "win",  tag: "est", verdict: "best calibrated"},
+  {name: "Forced choice",    gloss: "score the 20 candidate words directly",
+   e: [0.0780, 0.0800, 0.0900, 0.1310], badge: "win",  tag: "new", verdict: "2× accuracy, best AUROC"},
   {name: "Log-prob",         gloss: "joint token probability of the answer",
-   e8: 0.2551, e27: 0.1312, badge: "ok",   tag: "est", verdict: "decent"},
+   e: [0.2551, 0.1312, 0.0373, 0.1509], badge: "ok",   tag: "est", verdict: "fast triage"},
+  {name: "Constrained label", gloss: "score five confidence labels with the oracle’s logits",
+   e: [0.4250, 0.0686, 0.1815, 0.0879], badge: "ok",   tag: "new", verdict: "recovers introspection"},
   {name: "MCMC agreement",   gloss: "10 power-sampling chains; agreement = confidence",
-   e8: 0.2635, e27: 0.3902, badge: "ok",   tag: "new", verdict: "decent"},
+   e: [0.2635, 0.3902, 0.5042, 0.3737], badge: "ok",   tag: "new", verdict: "decent"},
   {name: "Steering sens.",   gloss: "vary injection strength; stability = confidence",
-   e8: 0.4036, e27: 0.5009, badge: "poor", tag: "new", verdict: "poor"},
+   e: [0.4036, 0.5009, 0.6491, 0.4693], badge: "poor", tag: "new", verdict: "poor"},
   {name: "MCMC acceptance",  gloss: "MH chain acceptance rate as confidence",
-   e8: 0.5438, e27: 0.7396, badge: "poor", tag: "new", verdict: "poor"},
+   e: [0.5438, 0.7396, 0.7141, 0.5161], badge: "poor", tag: "new", verdict: "poor"},
   {name: "Direct (numeric)", gloss: "ask the oracle ‘how confident are you?’",
-   e8: 0.5816, e27: 0.7527, badge: "bad",  tag: "est", verdict: "anti-calibrated"},
+   e: [0.5816, 0.7527, 0.7830, 0.5623], badge: "bad",  tag: "est", verdict: "anti-calibrated"},
 ];
+const oracleCls = ["q8", "q27", "g2", "g3"];
 
 const xMax = 0.80;          // axis upper bound
 const ticksPct = [0, 10, 20, 30, 40, 50, 60, 70, 80];
@@ -516,13 +534,15 @@ methods.forEach((m, i) => {
   const dagger = (m.tag === "new") ? ' <span class="dag">†</span>' : '';
   const row = document.createElement("div");
   row.className = "row" + (win ? " win" : "") + (lose ? " lose" : "");
-  const xa = (m.e8  / xMax) * 100;
-  const xb = (m.e27 / xMax) * 100;
-  const left  = Math.min(xa, xb);
-  const right = Math.max(xa, xb);
+  const xs = m.e.map(e => (e / xMax) * 100);
+  const left  = Math.min(...xs);
+  const right = Math.max(...xs);
+  const iMin = m.e.indexOf(Math.min(...m.e));
+  const iMax = m.e.indexOf(Math.max(...m.e));
   const zoneLabel = (i === 0)
     ? '<div class="zone-label">calibrated</div>' : '';
 
+  // Selective labels: min above, max below; never a number on every dot.
   row.innerHTML = `
     <div class="name-col">
       <div class="name">${m.name}${dagger}</div>
@@ -533,10 +553,9 @@ methods.forEach((m, i) => {
       ${zoneLabel}
       <div class="track"></div>
       <div class="connector" style="left:${left}%; width:${right - left}%"></div>
-      <div class="dot b8"  style="left:${xa}%"></div>
-      <div class="dot b27" style="left:${xb}%"></div>
-      <div class="val b8"  style="left:${xa}%; top: calc(50% - 18px)">${m.e8.toFixed(3)}</div>
-      <div class="val b27" style="left:${xb}%; top: calc(50% + 18px)">${m.e27.toFixed(3)}</div>
+      ${xs.map((x, j) => `<div class="dot ${oracleCls[j]}" style="left:${x}%"></div>`).join("")}
+      <div class="val" style="left:${xs[iMin]}%; top: calc(50% - 18px)">${m.e[iMin].toFixed(3)}</div>
+      <div class="val" style="left:${xs[iMax]}%; top: calc(50% + 18px)">${m.e[iMax].toFixed(3)}</div>
     </div>
     <div class="badge-col">
       <span class="badge ${m.badge}">${win?'✓ ':''}${lose?'✗ ':''}${m.verdict}</span>
