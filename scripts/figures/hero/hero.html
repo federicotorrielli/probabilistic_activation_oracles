@@ -332,7 +332,7 @@ html, body {
 .axis .lhs { color: var(--ink); font-weight: 600; font-size: 12.5px; }
 .axis .rhs { font-style: italic; color: var(--muted); font-size: 11px; }
 .axis-label {
-  margin-top: 4px;
+  margin-top: 17px;
   grid-template-columns: var(--plot-left) 1fr var(--plot-right);
   display: grid;
 }
@@ -466,7 +466,7 @@ html, body {
   <div class="tagline">
     <span class="em">An AI reads another AI’s hidden thoughts</span> and decodes an answer.
     <span class="em">But how confident is the read?</span>
-    Eight confidence readouts, on four oracles.
+    Five confidence readouts, on four oracles.
   </div>
 
   <div class="divider"></div>
@@ -479,7 +479,6 @@ html, body {
       <span><span class="lg-dot q27"></span>Qwen3.6-27B</span>
       <span><span class="lg-dot g2"></span>Gemma-2-9B</span>
       <span><span class="lg-dot g3"></span>Gemma-3-27B</span>
-      <span><span class="lg-zone"></span>well-calibrated (ECE ≤ 0.10)</span>
     </div>
   </div>
 
@@ -512,12 +511,6 @@ const methods = [
    e: [0.2551, 0.1312, 0.0373, 0.1509], badge: "ok",   tag: "est", verdict: "fast triage"},
   {name: "Constrained label", gloss: "score five confidence labels with the oracle’s logits",
    e: [0.4250, 0.0686, 0.1815, 0.0879], badge: "ok",   tag: "new", verdict: "recovers introspection"},
-  {name: "MCMC agreement",   gloss: "10 power-sampling chains; agreement = confidence",
-   e: [0.2635, 0.3902, 0.5042, 0.3737], badge: "ok",   tag: "new", verdict: "decent"},
-  {name: "Steering sens.",   gloss: "vary injection strength; stability = confidence",
-   e: [0.4036, 0.5009, 0.6491, 0.4693], badge: "poor", tag: "new", verdict: "poor"},
-  {name: "MCMC acceptance",  gloss: "MH chain acceptance rate as confidence",
-   e: [0.5438, 0.7396, 0.7141, 0.5161], badge: "poor", tag: "new", verdict: "poor"},
   {name: "Direct (numeric)", gloss: "ask the oracle ‘how confident are you?’",
    e: [0.5816, 0.7527, 0.7830, 0.5623], badge: "bad",  tag: "est", verdict: "anti-calibrated"},
 ];
@@ -549,8 +542,6 @@ methods.forEach((m, i) => {
       <div class="gloss">${m.gloss}</div>
     </div>
     <div class="track-col">
-      <div class="zone"></div>
-      ${zoneLabel}
       <div class="track"></div>
       <div class="connector" style="left:${left}%; width:${right - left}%"></div>
       ${xs.map((x, j) => `<div class="dot ${oracleCls[j]}" style="left:${x}%"></div>`).join("")}

@@ -55,7 +55,7 @@ MODELS = {
 }
 
 METHOD_DISPLAY = {
-    "forced_choice": "Forced choice (M7)",
+    "forced_choice": "Forced choice (M5)",
     "logprob_offset": "Log-prob (with offset)",
     "logprob_no_offset": "Log-prob (no offset)",
     "bootstrap_t0p3": r"Bootstrap $T{=}0.3$",
