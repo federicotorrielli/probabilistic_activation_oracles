@@ -4,6 +4,7 @@ AGENTS.md
 paper/
 paper_old/
 results/gemma-2-9b/taboo_uq/checkpoint.json
+findings/
 
 # Byte-compiled / optimized / DLL files
 __pycache__/

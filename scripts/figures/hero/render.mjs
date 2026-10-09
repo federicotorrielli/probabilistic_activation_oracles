@@ -1,17 +1,17 @@
 /**
  * Render scripts/figures/hero/hero.html to paper/figs/hero.pdf and .png.
  *
- * Uses the global Playwright install ( pnpm add -g @playwright/test ).
+ * Uses the system Playwright install.
  */
-import { chromium } from '/home/fedexmachina/.local/share/pnpm/global/5/node_modules/playwright/index.mjs';
+import { chromium } from '/usr/lib/node_modules/playwright/index.mjs';
 import { fileURLToPath } from 'node:url';
 import path from 'node:path';
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..', '..');
 const HTML = 'file://' + path.join(__dirname, 'hero.html');
-const OUT_PDF = path.join(REPO, 'paper', 'figs', 'hero.pdf');
-const OUT_PNG = path.join(REPO, 'paper', 'figs', 'hero.png');
+const OUT_PDF = path.join(REPO, 'paper', 'Probabilistic_Activation_Oracles__EMNLP_2026_', 'figs', 'hero.pdf');
+const OUT_PNG = path.join(REPO, 'paper', 'Probabilistic_Activation_Oracles__EMNLP_2026_', 'figs', 'hero.png');
 
 const browser = await chromium.launch({
   // Reuse the system Chromium so we don't need playwright-install.
