@@ -10,8 +10,8 @@ import path from 'node:path';
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..', '..');
 const HTML = 'file://' + path.join(__dirname, 'hero.html');
-const OUT_PDF = path.join(REPO, 'paper', 'Probabilistic_Activation_Oracles__EMNLP_2026_', 'figs', 'hero.pdf');
-const OUT_PNG = path.join(REPO, 'paper', 'Probabilistic_Activation_Oracles__EMNLP_2026_', 'figs', 'hero.png');
+const OUT_PDF = path.join(REPO, 'paper', 'figs', 'hero.pdf');
+const OUT_PNG = path.join(REPO, 'paper', 'figs', 'hero.png');
 
 const browser = await chromium.launch({
   // Reuse the system Chromium so we don't need playwright-install.
