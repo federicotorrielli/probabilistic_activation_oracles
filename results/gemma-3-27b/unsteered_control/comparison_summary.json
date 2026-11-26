@@ -1,0 +1,151 @@
+{
+  "logprob_offset": {
+    "accuracy": 0.0415,
+    "ece": 0.713335360357379,
+    "brier_score": 0.5857799118237691,
+    "nll": 2.7208145369248857,
+    "auroc": 0.8921961537682638,
+    "conf_given_correct": 0.9705471229604424,
+    "conf_given_wrong": 0.7454957274434226,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {
+        "extracted_word_source": {
+          "first_alpha_fallback": 5723,
+          "answer_vocab": 277
+        }
+      }
+    }
+  },
+  "direct": {
+    "accuracy": 0.0415,
+    "ece": 0.9330366666666665,
+    "brier_score": 0.9217475,
+    "nll": 16.503809461659493,
+    "auroc": 0.42675797957959466,
+    "conf_given_correct": 0.9773493975903614,
+    "conf_given_wrong": 0.974414884367936,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {
+        "confidence_decode_method": {
+          "freeform": 6000
+        }
+      }
+    }
+  },
+  "direct_linguistic_expected": {
+    "accuracy": 0.0415,
+    "ece": 0.6512232014977366,
+    "brier_score": 0.48520175342596833,
+    "nll": 1.2949419708350813,
+    "auroc": 0.7214872356754439,
+    "conf_given_correct": 0.8052859101662094,
+    "conf_given_wrong": 0.6878495943931549,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "direct_linguistic_p_very_high": {
+    "accuracy": 0.0415,
+    "ece": 0.29240280828932114,
+    "brier_score": 0.27322469961230045,
+    "nll": 1.9963008779768048,
+    "auroc": 0.6662651300734148,
+    "conf_given_correct": 0.5537189688657859,
+    "conf_given_wrong": 0.2944821246964098,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "direct_linguistic_p_high_plus": {
+    "accuracy": 0.0415,
+    "ece": 0.519872758647178,
+    "brier_score": 0.6872966041019235,
+    "nll": 10.989809731393155,
+    "auroc": 0.741684177153755,
+    "conf_given_correct": 0.9772100943100334,
+    "conf_given_wrong": 0.730466226658217,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "bootstrap_t0p7": {
+    "accuracy": 0.04133333333333333,
+    "ece": 0.833275,
+    "brier_score": 0.7588754166666666,
+    "nll": 12.84347525074029,
+    "auroc": 0.7142697911525865,
+    "conf_given_correct": 0.9953629032258065,
+    "conf_given_wrong": 0.8694019471488178,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "bootstrap_t1p0": {
+    "accuracy": 0.04133333333333333,
+    "ece": 0.7799750000000001,
+    "brier_score": 0.6823304166666667,
+    "nll": 10.324866169405073,
+    "auroc": 0.7612212021625017,
+    "conf_given_correct": 0.9893145161290322,
+    "conf_given_wrong": 0.8140646731571627,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "bootstrap_t1p3": {
+    "accuracy": 0.0415,
+    "ece": 0.7244500000000001,
+    "brier_score": 0.6078941666666667,
+    "nll": 8.494397833632348,
+    "auroc": 0.7987069125048272,
+    "conf_given_correct": 0.9837349397590361,
+    "conf_given_wrong": 0.7565206051121544,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "bootstrap_t1p5": {
+    "accuracy": 0.041666666666666664,
+    "ece": 0.6878833333333334,
+    "brier_score": 0.5610100000000001,
+    "nll": 7.233644339876951,
+    "auroc": 0.8276500869565218,
+    "conf_given_correct": 0.9826,
+    "conf_given_wrong": 0.7185478260869564,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  },
+  "forced_choice": {
+    "accuracy": 0.10483333333333333,
+    "ece": 0.5850829278781393,
+    "brier_score": 0.45357918883310155,
+    "nll": 1.437224254420335,
+    "auroc": 0.7594654682939261,
+    "conf_given_correct": 0.8430328686761364,
+    "conf_given_wrong": 0.671984712878709,
+    "n_samples": 6000,
+    "metadata": {
+      "flag_counts": {},
+      "categorical_counts": {}
+    }
+  }
+}

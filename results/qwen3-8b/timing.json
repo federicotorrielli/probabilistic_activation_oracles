@@ -1,0 +1,10 @@
+{
+  "gpu": "NVIDIA B200",
+  "seconds_per_sample": {
+    "log_probability": 0.0956589230977721,
+    "bootstrap_k20": 0.10440912956552466,
+    "direct_numeric": 0.17931371141101557,
+    "label_scoring": 0.037197747904503226,
+    "forced_choice": 1.113945338825163
+  }
+}
