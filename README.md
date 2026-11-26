@@ -12,7 +12,7 @@ cd probabilistic_activation_oracles
 uv sync --extra flash-attn --reinstall
 ```
 
-`--extra flash-attn` is mandatory; the default `uv sync` silently omits it and every GPU run breaks. `--reinstall` keeps it consistent after pulls. For Qwen3.6-27B inference, stay on flash-attn 2: flash-attn-4 `4.0.0b12` silently corrupts activations on the 27B forward path at seq>~170 (see `findings/attention_backends_2026-05-11.md`).
+`--extra flash-attn` is mandatory; the default `uv sync` silently omits it and every GPU run breaks. `--reinstall` keeps it consistent after pulls. On macOS the same command installs the PyPI torch (CPU/MPS) and skips the CUDA kernels, which is enough for the analysis scripts and the figures. For Qwen3.6-27B inference, stay on flash-attn 2: flash-attn-4 `4.0.0b12` silently corrupts activations on the 27B forward path at seq>~170 (see `findings/attention_backends_2026-05-11.md`).
 
 ## Quickstart
 
@@ -62,6 +62,16 @@ Per-method, per-preset JSONs land in `results/<preset>/taboo_uq/` (or `run_N/` a
 ```bash
 uv run python scripts/analysis/bootstrap_cis.py
 uv run python scripts/analysis/post_hoc_calibration.py
-uv run python scripts/analysis/build_latex_tables.py
+uv run python scripts/analysis/build_latex_tables.py --write
+uv run python scripts/analysis/review_analyses.py        # resampling, errors, failure types, coverage, T selection
+uv run python scripts/analysis/arr_nov_analyses.py       # label-free T, crossed intervals, within-word ECE
+uv run python scripts/analysis/arr_nov_tables.py         # main scorecard, label-free T, within-word ECE, cost
 uv run python scripts/figures/layer_sweep.py
+```
+
+Control and cost runs for the ARR revision (GPU):
+
+```bash
+uv run python -m pao.experiments.unsteered_control --preset qwen3-8b   # same task without steering
+uv run python -m pao.experiments.time_methods --preset qwen3-8b        # seconds per sample of each method
 ```

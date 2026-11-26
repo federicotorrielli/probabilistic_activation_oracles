@@ -1,11 +1,23 @@
 /**
  * Render scripts/figures/hero/hero.html to paper/figs/hero.pdf and .png.
  *
- * Uses the system Playwright install.
+ * Uses the system Playwright: Linux /usr/lib/node_modules/playwright, or on macOS
+ * the playwright-core bundled with `brew install playwright-cli` (browser via
+ * `playwright-cli install-browser chromium`).
  */
-import { chromium } from '/usr/lib/node_modules/playwright/index.mjs';
-import { fileURLToPath } from 'node:url';
+import { existsSync } from 'node:fs';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 import path from 'node:path';
+
+const PLAYWRIGHT_CANDIDATES = [
+  '/usr/lib/node_modules/playwright/index.mjs',
+  '/opt/homebrew/opt/playwright-cli/libexec/lib/node_modules/@playwright/cli/node_modules/playwright-core/index.mjs',
+];
+const SYSTEM_CHROMIUM = '/usr/bin/chromium';
+
+const found = PLAYWRIGHT_CANDIDATES.find(existsSync);
+if (!found) throw new Error('Playwright not found in: ' + PLAYWRIGHT_CANDIDATES.join(', '));
+const { chromium } = await import(pathToFileURL(found).href);
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url));
 const REPO = path.resolve(__dirname, '..', '..', '..');
@@ -13,10 +25,10 @@ const HTML = 'file://' + path.join(__dirname, 'hero.html');
 const OUT_PDF = path.join(REPO, 'paper', 'figs', 'hero.pdf');
 const OUT_PNG = path.join(REPO, 'paper', 'figs', 'hero.png');
 
-const browser = await chromium.launch({
-  // Reuse the system Chromium so we don't need playwright-install.
-  executablePath: '/usr/bin/chromium',
-});
+// Linux: reuse the system Chromium. macOS: Playwright's own browser.
+const browser = await chromium.launch(
+  existsSync(SYSTEM_CHROMIUM) ? { executablePath: SYSTEM_CHROMIUM } : {},
+);
 const ctx = await browser.newContext({
   viewport: { width: 1538, height: 900 },
   deviceScaleFactor: 2,

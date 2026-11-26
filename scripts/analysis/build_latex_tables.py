@@ -4,8 +4,7 @@ Every number in the paper's tables comes from this script reading the raw
 results JSONs; nothing is hand-copied. Run with --write to (re)generate the
 fragments under paper/, or with no args to print them to stdout.
 
-Fragments:
-  scorecard-main-tbl.tex        main four-oracle scorecard (ECE/AUROC +- SE)
+Fragments (the main scorecard comes from arr_nov_tables.py):
   full-scorecard-qwen-tbl.tex   all method rows, Qwen pair, 5 metrics
   full-scorecard-gemma-tbl.tex  all method rows, Gemma pair, 5 metrics
   tsweep-tbl.tex                bootstrap temperature sweep, four oracles
@@ -133,63 +132,6 @@ def load_cis(model: str) -> dict:
 def fmt(x: float, nd: int = 3) -> str:
     s = f"{x:.{nd}f}"
     return s[1:] if s.startswith("0.") else s
-
-
-def scorecard_main() -> str:
-    sums = {m: load_summaries(m) for m in MODELS}
-    cis = {m: load_cis(m) for m in MODELS}
-    best_ece = {m: min(sums[m][k]["ece"] for k in MAIN_ORDER if k in sums[m]) for m in MODELS}
-    best_aur = {m: max(sums[m][k]["auroc"] for k in MAIN_ORDER if k in sums[m]) for m in MODELS}
-
-    def cell(model, key, metric, best):
-        v = sums[model][key][metric]
-        se = cis[model][key][{"ece": "ece", "auroc": "auroc"}[metric]]["se"]
-        body = rf"{fmt(v)}\,\tiny$\pm${fmt(se)}"
-        return rf"\textbf{{{body}}}" if abs(v - best) < 5e-4 else body
-
-    out = [
-        r"\begin{table*}[t]",
-        r"\centering",
-        r"\footnotesize \setlength{\tabcolsep}{1.0pt}",
-        r"\begin{tabular}{l rrr rrr rrr rrr}",
-        r"\toprule",
-        " & "
-        + " & ".join(rf"\multicolumn{{3}}{{c}}{{{MODELS[m]['display']}}}" for m in MODELS)
-        + r" \\",
-        r"\cmidrule(lr){2-4}\cmidrule(lr){5-7}\cmidrule(lr){8-10}\cmidrule(lr){11-13}",
-        "Method & " + " & ".join(["Acc & ECE & AUROC"] * 4) + r" \\",
-        r"\midrule",
-    ]
-    short = {
-        "logprob_offset": "Log-prob (offset)",
-        "direct_linguistic_p_very_high": r"Constr.\ label $P(\mathrm{v.\,high})$",
-    }
-    for key in MAIN_ORDER:
-        cells = []
-        for m in MODELS:
-            if key not in sums[m]:
-                cells += ["--", "--", "--"]
-                continue
-            s = sums[m][key]
-            cells.append(fmt(s["accuracy"]))
-            cells.append(cell(m, key, "ece", best_ece[m]))
-            cells.append(cell(m, key, "auroc", best_aur[m]))
-        name = short.get(key, METHOD_DISPLAY[key])
-        out.append(f"{name} & " + " & ".join(cells) + r" \\")
-    out += [
-        r"\bottomrule",
-        r"\end{tabular}",
-        r"\caption{Main scorecard on all four oracles, $n{=}6{,}000$ samples per row"
-        r" per oracle. ECE and AUROC carry $\pm$ one bootstrap standard error"
-        r" (1000 resamples). Lower ECE and higher accuracy and AUROC are better;"
-        r" best ECE and AUROC per oracle in \textbf{bold}. Forced choice scores the"
-        r" 20 candidate words directly and is the only method that changes the answer"
-        r" as well as the confidence. The full method grid is in"
-        r" \cref{app:full-scorecard}.}",
-        r"\label{tab:scorecard}",
-        r"\end{table*}",
-    ]
-    return "\n".join(out)
 
 
 def full_scorecard(models: list[str], label: str) -> str:
@@ -446,7 +388,6 @@ def ci_table() -> str:
 
 
 FRAGMENTS = {
-    "scorecard-main-tbl.tex": scorecard_main,
     "full-scorecard-qwen-tbl.tex": lambda: full_scorecard(
         ["qwen3-8b", "qwen3.6-27b"], "tab:full-scorecard"
     ),

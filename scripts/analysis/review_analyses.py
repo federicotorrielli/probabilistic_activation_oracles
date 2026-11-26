@@ -22,7 +22,7 @@ import matplotlib.pyplot as plt
 import numpy as np
 from scipy.stats import rankdata
 
-PAPER = Path("paper/Probabilistic_Activation_Oracles__EMNLP_2026_")
+PAPER = Path("paper")
 OUT = Path("results/review_analyses")
 B = 1000
 
