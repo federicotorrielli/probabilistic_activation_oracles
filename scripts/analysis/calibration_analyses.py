@@ -1,12 +1,12 @@
-"""Analyses for the ARR November 2026 reviews (findings/18).
+"""Calibration analyses of the bootstrap temperature and of the main method rows.
 
-1. Label-free bootstrap temperature chosen leave-one-oracle-out (Nzbw W4c).
+1. Label-free bootstrap temperature chosen leave-one-oracle-out.
 2. Bootstrap at the temperature tuned on five labeled words, scored on the other
-   words, for the hero figure and the main table (Nzbw W4a).
-3. Crossed (pigeonhole) 95% intervals and within-word ECE for the main rows (Nzbw W6).
-4. Maximum ECE across oracles for the free-text methods, on paired resamples (Nzbw W4b).
+   words, for the hero figure and the main table.
+3. Crossed (pigeonhole) 95% intervals and within-word ECE for the main rows.
+4. Maximum ECE across oracles for the free-text methods, on paired resamples.
 
-Writes results/review_analyses/nov/nov_analyses.json. Tables: arr_nov_tables.py.
+Writes results/calibration_analyses/calibration_analyses.json. Tables: calibration_tables.py.
 """
 
 from __future__ import annotations
@@ -16,9 +16,9 @@ from pathlib import Path
 
 import numpy as np
 
-from review_analyses import ORACLES, auroc, ece, load_grid, resample_index
+from resampling_analyses import ORACLES, auroc, ece, load_grid, resample_index
 
-OUT = Path("results/review_analyses/nov")
+OUT = Path("results/calibration_analyses")
 B = 1000
 GRID = ("0p3", "0p5", "0p7", "1p0", "1p3", "1p5")  # temperatures run on all four oracles
 FIT_WORDS, SPLITS = 5, 200
@@ -119,7 +119,7 @@ def main():
             for m, d in intervals.items()}
     result = {"grid_ece": eces, "loo_temperature": loo, "tuned_on_5_words": tuned,
               "main_keys": keys, "main_rows": slim, "max_ece_share_bootstrap_lower": shares}
-    (OUT / "nov_analyses.json").write_text(json.dumps(result, indent=2))
+    (OUT / "calibration_analyses.json").write_text(json.dumps(result, indent=2))
     print(json.dumps({"loo": loo, "tuned": tuned, "shares": shares}, indent=1))
 
 

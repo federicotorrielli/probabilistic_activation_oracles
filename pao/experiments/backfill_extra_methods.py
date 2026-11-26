@@ -1,14 +1,14 @@
-"""Backfill the two ARR-rebuttal methods without a full 16-method re-run.
+"""Backfill two methods without a full 16-method re-run.
 
 Two tasks, one shared grid loop (20 words x 3 verbalizers x 100 contexts):
 
   --task forced_choice   M7: closed-vocabulary forced choice over the 20 taboo
-                         words, scored under the steering hook (reviewer 3's
-                         requested baseline). Emits ``forced_choice``.
+                         words, scored under the steering hook. Emits
+                         ``forced_choice``.
 
   --task extra_temps     Extends the bootstrap temperature grid past 1.5 on the
-                         low-accuracy oracles, to locate the optimum reviewer 3
-                         noted we had not reached. Emits ``bootstrap_t1p75`` and
+                         low-accuracy oracles, where the original grid had not
+                         reached the optimum. Emits ``bootstrap_t1p75`` and
                          ``bootstrap_t2p0`` (override with --temps).
 
 Mirrors backfill_direct_linguistic.py: reuses setup_experiment_state,

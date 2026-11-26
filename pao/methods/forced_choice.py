@@ -5,7 +5,7 @@ answer under the steering hook, then normalises over the candidate set. The
 confidence is the normalised probability of the top-scoring word, and the
 prediction is that word. This removes the answer-extraction step that the other
 methods rely on, so it measures directly whether the oracle's distribution over
-the candidate vocabulary is calibrated (requested by ARR reviewer 3).
+the candidate vocabulary is calibrated.
 
 Each word is scored under two surface forms (with and without a leading space);
 we keep the higher-probability form, which matches the whitespace hedge already

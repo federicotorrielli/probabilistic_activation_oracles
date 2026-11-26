@@ -63,13 +63,13 @@ Per-method, per-preset JSONs land in `results/<preset>/taboo_uq/` (or `run_N/` a
 uv run python scripts/analysis/bootstrap_cis.py
 uv run python scripts/analysis/post_hoc_calibration.py
 uv run python scripts/analysis/build_latex_tables.py --write
-uv run python scripts/analysis/review_analyses.py        # resampling, errors, failure types, coverage, T selection
-uv run python scripts/analysis/arr_nov_analyses.py       # label-free T, crossed intervals, within-word ECE
-uv run python scripts/analysis/arr_nov_tables.py         # main scorecard, label-free T, within-word ECE, cost
+uv run python scripts/analysis/resampling_analyses.py    # resampling, errors, failure types, coverage, T selection
+uv run python scripts/analysis/calibration_analyses.py   # label-free T, crossed intervals, within-word ECE
+uv run python scripts/analysis/calibration_tables.py     # main scorecard, label-free T, within-word ECE, cost
 uv run python scripts/figures/layer_sweep.py
 ```
 
-Control and cost runs for the ARR revision (GPU):
+Control and cost runs (GPU):
 
 ```bash
 uv run python -m pao.experiments.unsteered_control --preset qwen3-8b   # same task without steering

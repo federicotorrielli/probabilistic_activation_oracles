@@ -1,6 +1,6 @@
-"""LaTeX tables for the ARR November 2026 revision, built from saved JSON only.
+"""LaTeX tables for the calibration analyses, built from saved JSON only.
 
-Inputs: results/review_analyses/nov/nov_analyses.json (arr_nov_analyses.py),
+Inputs: results/calibration_analyses/calibration_analyses.json (calibration_analyses.py),
 results/qwen3-8b/timing.json (pao.experiments.time_methods).
 Writes scorecard-main, loo-t, within-word, and cost tables into paper/.
 """
@@ -11,7 +11,7 @@ import json
 from pathlib import Path
 
 PAPER = Path("paper")
-NOV = json.loads(Path("results/review_analyses/nov/nov_analyses.json").read_text())
+NOV = json.loads(Path("results/calibration_analyses/calibration_analyses.json").read_text())
 TIMING = json.loads(Path("results/qwen3-8b/timing.json").read_text())["seconds_per_sample"]
 ORACLES = {"qwen3-8b": "Qwen3-8B", "qwen3.6-27b": "Qwen3.6-27B", "gemma-2-9b": "Gemma-2-9B",
            "gemma-3-27b": "Gemma-3-27B"}

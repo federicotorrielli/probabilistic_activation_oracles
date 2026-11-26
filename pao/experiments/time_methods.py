@@ -1,4 +1,4 @@
-"""Seconds per sample of each confidence method on the steered oracle (cost table, THBf).
+"""Seconds per sample of each confidence method on the steered oracle (cost table).
 
     python -m pao.experiments.time_methods --preset qwen3-8b --samples 50
 """

@@ -1,4 +1,4 @@
-"""Analyses added for the ARR resubmission.
+"""Analyses that respect the structure of the data, and error analyses.
 
 1. Resampling that respects the data structure: whole secret words, and
    words x context prompts x verbalizer prompts together (pigeonhole
@@ -8,7 +8,7 @@
 4. The bootstrap temperature rule, with T chosen on a few labeled secret words.
 5. The failure types of Jakkli et al. (2026) inside the free-text errors.
 
-Writes results/review_analyses/*.json, four LaTeX tables and one figure in
+Writes results/resampling/*.json, four LaTeX tables and one figure in
 the paper directory.
 """
 
@@ -23,7 +23,7 @@ import numpy as np
 from scipy.stats import rankdata
 
 PAPER = Path("paper")
-OUT = Path("results/review_analyses")
+OUT = Path("results/resampling")
 B = 1000
 
 ORACLES = {

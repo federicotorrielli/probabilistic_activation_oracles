@@ -4,7 +4,7 @@ Every number in the paper's tables comes from this script reading the raw
 results JSONs; nothing is hand-copied. Run with --write to (re)generate the
 fragments under paper/, or with no args to print them to stdout.
 
-Fragments (the main scorecard comes from arr_nov_tables.py):
+Fragments (the main scorecard comes from calibration_tables.py):
   full-scorecard-qwen-tbl.tex   all method rows, Qwen pair, 5 metrics
   full-scorecard-gemma-tbl.tex  all method rows, Gemma pair, 5 metrics
   tsweep-tbl.tex                bootstrap temperature sweep, four oracles
